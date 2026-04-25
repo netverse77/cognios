@@ -83,7 +83,9 @@ const defaultViewState: IssueViewState = {
   sortField: "updated",
   sortDir: "desc",
   groupBy: "none",
-  viewMode: "list",
+  // AgenticOS Kanban-first redesign (COG-114): the board is now the canonical
+  // task view. List/timeline remain available via the toolbar toggle.
+  viewMode: "board",
   nestingEnabled: true,
   collapsedGroups: [],
   collapsedParents: [],
