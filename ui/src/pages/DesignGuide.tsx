@@ -231,7 +231,7 @@ export function DesignGuide() {
         <div>
           <h2 className="text-xl font-bold">Design Guide</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Every component, style, and pattern used across the AgenticOS
+            Every component, style, and pattern used across the Cogni OS
             control plane. Tokens are defined in <code className="font-mono text-xs">ui/src/index.css</code>.
           </p>
         </div>

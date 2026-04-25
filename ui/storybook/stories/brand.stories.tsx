@@ -32,7 +32,7 @@ function Section({
 function WordmarkShowcase() {
   return (
     <StoryShell>
-      <Section eyebrow="Wordmark" title="AgenticOS brand surface">
+      <Section eyebrow="Wordmark" title="Cogni OS brand surface">
         <div className="space-y-6">
           <div className="flex flex-wrap items-end gap-8 rounded-md border border-border bg-card p-6">
             <Wordmark size="sm" />
@@ -89,7 +89,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Wordmark and glyph slots introduced in COG-114 for the AgenticOS rebrand. Slot the Wordmark anywhere a product brand should appear; the glyph alone is meant for compact rails.",
+          "Wordmark and glyph slots introduced in COG-114 for the Cogni OS rebrand. Slot the Wordmark anywhere a product brand should appear; the glyph alone is meant for compact rails.",
       },
     },
   },

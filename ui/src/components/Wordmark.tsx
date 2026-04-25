@@ -1,8 +1,9 @@
 import { cn } from "@/lib/utils";
 
 /**
- * AgenticOS wordmark + glyph. The mark is the brand surface introduced in
- * COG-114 — code paths still say "paperclip" until legal sign-off lands.
+ * Cogni OS wordmark + glyph. The mark is the brand surface introduced in
+ * COG-114. Internal package paths and orchestrator code still use the
+ * "paperclip" name (paperclip is the orchestrator inside Cogni OS).
  *
  * Slot anywhere a product brand should appear (sidebar header, splash, auth
  * landing). Pairs with the `--brand` design token so it inherits the active
@@ -37,7 +38,7 @@ export function Wordmark({
   return (
     <div
       className={cn("inline-flex items-center gap-2", className)}
-      aria-label="AgenticOS"
+      aria-label="Cogni OS"
       role="img"
     >
       {!textOnly && <WordmarkGlyph size={dims.glyph} />}
@@ -49,10 +50,10 @@ export function Wordmark({
           >
             {/* Both halves render in currentColor so the wordmark stays
                 legible on any surface (neutral foreground OR brand fill).
-                Brand emphasis is carried by the glyph. The "OS" suffix is
-                visually separated by weight only. */}
-            <span>Agentic</span>
-            <span className="font-bold opacity-90">OS</span>
+                Brand emphasis is carried by the glyph. "Cogni OS" is two
+                words; the "OS" suffix is visually separated by weight. */}
+            <span>Cogni</span>
+            <span className="ml-[0.25em] font-bold opacity-90">OS</span>
           </span>
           {tagline && size === "lg" && (
             <span
@@ -72,7 +73,7 @@ export function Wordmark({
 
 /**
  * The glyph alone — three stacked nodes joined by a routing line, evoking the
- * agent → orchestrator → board flow at the heart of AgenticOS. Renders as
+ * agent → orchestrator → board flow at the heart of Cogni OS. Renders as
  * currentColor for the line and `--brand` for the active node so it adapts to
  * any surface.
  */

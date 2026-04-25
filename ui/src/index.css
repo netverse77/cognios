@@ -44,7 +44,7 @@
   --color-brand-foreground: var(--brand-foreground);
 }
 
-/* AgenticOS theme: cool-slate neutrals + teal/cyan signature, distinct
+/* Cogni OS theme: cool-slate neutrals + teal/cyan signature, distinct
    from Linear's violet defaults and Jira's saturated blue. */
 :root,
 .dark {
