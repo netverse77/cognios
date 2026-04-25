@@ -4,10 +4,14 @@ on:
   pull_request:
     branches:
       - master
+  push:
+    branches:
+      - master
+  workflow_dispatch:
 
 concurrency:
-  group: pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   policy:
@@ -21,7 +25,7 @@ jobs:
           fetch-depth: 0
 
       - name: Block manual lockfile edits
-        if: github.head_ref != 'chore/refresh-lockfile'
+        if: github.event_name == 'pull_request' && github.head_ref != 'chore/refresh-lockfile'
         run: |
           changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
           if printf '%s\n' "$changed" | grep -qx 'pnpm-lock.yaml'; then
@@ -81,6 +85,7 @@ jobs:
           fi
 
       - name: Validate dependency resolution when manifests change
+        if: github.event_name == 'pull_request'
         run: |
           changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
           manifest_pattern='(^|/)package\.json$|^pnpm-workspace\.yaml$|^\.npmrc$|^pnpmfile\.(cjs|js|mjs)$'
