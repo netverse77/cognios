@@ -174,6 +174,8 @@ A change is done when all are true:
 4. Docs updated when behavior or commands change
 5. PR description follows the [PR template](.github/PULL_REQUEST_TEMPLATE.md) with all sections filled in (including Model Used)
 
+> CI signal: `.github/workflows/pr.yml` runs the verify/e2e lanes on `pull_request`, on `push` to `master`, and via `workflow_dispatch`. Even if a PR is merged before its `pull_request` run completes, master itself produces a verifiable signal lane — so check the master run as the source of truth for the merged commit.
+
 ## 11. Fork-Specific: HenkDz/paperclip
 
 This is a fork of `paperclipai/paperclip` with QoL patches and an **external-only** Hermes adapter story on branch `feat/externalize-hermes-adapter` ([tree](https://github.com/HenkDz/paperclip/tree/feat/externalize-hermes-adapter)).
