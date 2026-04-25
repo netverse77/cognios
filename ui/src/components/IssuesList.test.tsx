@@ -218,6 +218,14 @@ describe("IssuesList", () => {
     mockExecutionWorkspacesApi.listSummaries.mockResolvedValue([]);
     mockInstanceSettingsApi.getExperimental.mockResolvedValue({ enableIsolatedWorkspaces: false });
     localStorage.clear();
+    // Most existing tests assert list-mode behaviour (rows, groups, columns).
+    // The product default is now "board" (COG-114) — opt list-focused tests in
+    // here so each one only has to think about its own concern. Tests that
+    // exercise board behaviour explicitly overwrite this entry.
+    localStorage.setItem(
+      "paperclip:test-issues:company-1",
+      JSON.stringify({ viewMode: "list" }),
+    );
   });
 
   afterEach(() => {
@@ -409,6 +417,56 @@ describe("IssuesList", () => {
 
     await waitForAssertion(() => {
       expect(container.textContent).toContain("Showing up to 200 matches. Refine the search to narrow further.");
+    });
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it("renders the Kanban board by default when no view state is persisted", async () => {
+    // Drop the list-mode seed from beforeEach so we exercise the real product default.
+    localStorage.removeItem("paperclip:test-issues:company-1");
+
+    const todoIssue = createIssue({
+      id: "issue-default-todo",
+      identifier: "PAP-100",
+      title: "Default board todo",
+      status: "todo",
+    });
+    const inProgressIssue = createIssue({
+      id: "issue-default-progress",
+      identifier: "PAP-101",
+      title: "Default board in progress",
+      status: "in_progress",
+    });
+
+    mockIssuesApi.list.mockImplementation((_companyId, filters) => {
+      if (filters?.status === "todo") return Promise.resolve([todoIssue]);
+      if (filters?.status === "in_progress") return Promise.resolve([inProgressIssue]);
+      return Promise.resolve([]);
+    });
+
+    const { root } = renderWithQueryClient(
+      <IssuesList
+        issues={[]}
+        agents={[]}
+        projects={[]}
+        viewStateKey="paperclip:test-issues"
+        onUpdateIssue={() => undefined}
+      />,
+      container,
+    );
+
+    await waitForAssertion(() => {
+      expect(container.querySelector('[data-testid="kanban-board"]')).not.toBeNull();
+      expect(container.querySelector('[data-testid="issue-row"]')).toBeNull();
+      expect(mockKanbanBoard).toHaveBeenLastCalledWith(expect.objectContaining({
+        issues: expect.arrayContaining([
+          expect.objectContaining({ id: "issue-default-todo" }),
+          expect.objectContaining({ id: "issue-default-progress" }),
+        ]),
+      }));
     });
 
     act(() => {
@@ -677,7 +735,7 @@ describe("IssuesList", () => {
   it("preserves stored grouping across refresh when initial assignees are applied", async () => {
     localStorage.setItem(
       "paperclip:test-issues:company-1",
-      JSON.stringify({ groupBy: "status", sortField: "updated", sortDir: "desc" }),
+      JSON.stringify({ viewMode: "list", groupBy: "status", sortField: "updated", sortDir: "desc" }),
     );
 
     const todoIssue = createIssue({ id: "issue-todo", title: "Alpha", status: "todo", assigneeAgentId: "agent-1" });

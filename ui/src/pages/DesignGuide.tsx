@@ -124,6 +124,7 @@ import { InlineEditor } from "@/components/InlineEditor";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { Identity } from "@/components/Identity";
 import { IssueReferencePill } from "@/components/IssueReferencePill";
+import { Wordmark, WordmarkGlyph } from "@/components/Wordmark";
 
 /* ------------------------------------------------------------------ */
 /*  Section wrapper                                                    */
@@ -170,6 +171,39 @@ function Swatch({ name, cssVar }: { name: string; cssVar: string }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Motion demo — replays the emphasized entry curve on click          */
+/* ------------------------------------------------------------------ */
+
+function MotionDemo() {
+  const [tick, setTick] = useState(0);
+  return (
+    <div className="space-y-3">
+      <Button size="sm" variant="outline" onClick={() => setTick((t) => t + 1)}>
+        Replay motion
+      </Button>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          ["fast", "var(--duration-fast)"],
+          ["base", "var(--duration-base)"],
+          ["slow", "var(--duration-slow)"],
+        ].map(([label, duration]) => (
+          <div
+            key={`${label}-${tick}`}
+            className="rounded-md border border-border bg-card p-3 text-xs"
+            style={{
+              animation: `dashboard-activity-enter ${duration} var(--ease-emphasized) both`,
+            }}
+          >
+            <div className="font-mono text-muted-foreground">{label}</div>
+            <div className="mt-1 text-foreground">Slides in with --ease-emphasized</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Page                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -192,12 +226,63 @@ export function DesignGuide() {
   return (
     <div className="space-y-10 max-w-4xl">
       {/* Page header */}
-      <div>
-        <h2 className="text-xl font-bold">Design Guide</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Every component, style, and pattern used across Paperclip.
-        </p>
+      <div className="space-y-3">
+        <Wordmark size="lg" tagline="Design system" />
+        <div>
+          <h2 className="text-xl font-bold">Design Guide</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Every component, style, and pattern used across the Cogni OS
+            control plane. Tokens are defined in <code className="font-mono text-xs">ui/src/index.css</code>.
+          </p>
+        </div>
       </div>
+
+      {/* ============================================================ */}
+      {/*  BRAND                                                        */}
+      {/* ============================================================ */}
+      <Section title="Brand">
+        <SubSection title="Wordmark sizes">
+          <div className="flex flex-wrap items-end gap-8 rounded-md border border-border bg-card p-6">
+            <Wordmark size="sm" />
+            <Wordmark size="md" />
+            <Wordmark size="lg" tagline="Operator console" />
+          </div>
+        </SubSection>
+
+        <SubSection title="Glyph only">
+          <div className="flex flex-wrap items-center gap-6 rounded-md border border-border bg-card p-6">
+            <div className="flex flex-col items-center gap-1.5 text-foreground">
+              <WordmarkGlyph size={20} />
+              <span className="text-[10px] text-muted-foreground font-mono">20px</span>
+            </div>
+            <div className="flex flex-col items-center gap-1.5 text-foreground">
+              <WordmarkGlyph size={32} />
+              <span className="text-[10px] text-muted-foreground font-mono">32px</span>
+            </div>
+            <div className="flex flex-col items-center gap-1.5 text-foreground">
+              <WordmarkGlyph size={48} />
+              <span className="text-[10px] text-muted-foreground font-mono">48px</span>
+            </div>
+            <div className="flex flex-col items-center gap-1.5 text-brand">
+              <WordmarkGlyph size={48} />
+              <span className="text-[10px] text-muted-foreground font-mono">on brand</span>
+            </div>
+          </div>
+        </SubSection>
+
+        <SubSection title="Brand color">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <Swatch name="Brand (signature teal)" cssVar="--brand" />
+            <Swatch name="Brand foreground" cssVar="--brand-foreground" />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Use <code className="font-mono">var(--brand)</code> or the
+            {" "}<code className="font-mono">text-brand / bg-brand</code> utilities for the
+            signature accent. Reserve it for brand surfaces and primary
+            calls-to-action — not for status colors.
+          </p>
+        </SubSection>
+      </Section>
 
       {/* ============================================================ */}
       {/*  COVERAGE                                                     */}
@@ -1317,6 +1402,42 @@ export function DesignGuide() {
             );
           })}
         </div>
+      </Section>
+
+      {/* ============================================================ */}
+      {/*  MOTION                                                       */}
+      {/* ============================================================ */}
+      <Section title="Motion">
+        <p className="text-sm text-muted-foreground">
+          Durations and easing curves are exposed as CSS variables so any
+          transition can stay on-system. Reach for these instead of hardcoded
+          <code className="font-mono">200ms cubic-bezier(...)</code> strings.
+        </p>
+        <SubSection title="Tokens">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+            {[
+              ["--duration-fast", "120ms — micro feedback (toggles, hovers)"],
+              ["--duration-base", "200ms — standard transition"],
+              ["--duration-slow", "320ms — entries, panel reveals"],
+              ["--ease-standard", "cubic-bezier(0.2, 0, 0, 1) — default app curve"],
+              ["--ease-emphasized", "cubic-bezier(0.16, 1, 0.3, 1) — entry/highlight"],
+              ["--ease-decelerate", "cubic-bezier(0, 0, 0.2, 1) — incoming UI"],
+              ["--ease-accelerate", "cubic-bezier(0.4, 0, 1, 1) — exit"],
+            ].map(([token, description]) => (
+              <div
+                key={token}
+                className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2"
+              >
+                <code className="font-mono text-xs text-foreground">{token}</code>
+                <span className="text-muted-foreground">{description}</span>
+              </div>
+            ))}
+          </div>
+        </SubSection>
+
+        <SubSection title="Demo">
+          <MotionDemo />
+        </SubSection>
       </Section>
 
       {/* ============================================================ */}
