@@ -1,0 +1,94 @@
+/*
+ * Cogni OS — Pixel v1 brand layer (COG-124 HB3, partial)
+ *
+ * Token additions that activate when `data-theme="cogni-os-v1"` is set on
+ * the <html> root. ThemeProvider sets this attribute when the env flag
+ * VITE_THEME_COGNI_OS=1 is on (the public-surface equivalent of the spec's
+ * THEME_COGNI_OS=1 — Vite client requires the VITE_ prefix to expose it).
+ *
+ * Default off: the COG-114 interim tokens defined in index.css remain the
+ * live palette and type stack until packaging flips the flag.
+ *
+ * Scope of this file (HB3, partial):
+ *   - Palette semantic tokens — success, warning, info (with -foreground
+ *     pairs). The -destructive token already exists in the COG-114 base
+ *     and serves as the "error" semantic — not duplicated here.
+ *   - Typography ramp — body/mono faces, weight scale, text-size ramp,
+ *     line-height tokens. Display face inherits from the COG-114 base.
+ *
+ * Out of scope for this heartbeat (queued, HB3 continues):
+ *   - Named-motion library (state transitions, drawer/modal, kanban-card,
+ *     toast — built on the existing duration/easing tokens). Lands in
+ *     the next heartbeat.
+ *   - Sigil mark variants (HB4 deliverable, not a token concern).
+ *
+ * License notes: Inter and JetBrains Mono are both OFL-licensed. No
+ * paid-license fonts in v1.
+ *
+ * WCAG: AA contrast verification on these color pairs is a HB6
+ * acceptance task. Starting values are designed for AA but not yet
+ * audited.
+ */
+
+:root[data-theme="cogni-os-v1"] {
+  /* ---- Semantic palette (light) ----
+   * Hue spacing: success 152 (green), warning 75 (amber), info 240 (true
+   * blue, deliberately distinct from primary teal at hue 198 to avoid
+   * confusion). Destructive stays at 27 (red, defined in COG-114 base).
+   */
+  --success: oklch(0.62 0.13 152);
+  --success-foreground: oklch(0.985 0.005 145);
+  --warning: oklch(0.78 0.155 75);
+  --warning-foreground: oklch(0.22 0.04 75);
+  --info: oklch(0.55 0.14 240);
+  --info-foreground: oklch(0.985 0.005 240);
+
+  /* ---- Typography ----
+   * Display face inherits from the COG-114 --font-display stack (Inter +
+   * system fallthrough). Body shares the display stack for v1 — a
+   * separate body face is a v1.1 refinement if a tighter pair is needed.
+   * Mono face is JetBrains Mono with broad fallback for terminal/code
+   * surfaces.
+   */
+  --font-body: var(--font-display);
+  --font-mono:
+    "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, "Liberation Mono", monospace;
+
+  /* Weight scale — four-stop ramp matches the existing usage in
+   * Wordmark.tsx (font-semibold + font-bold for the "OS" suffix). */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Text-size ramp — values match Tailwind v4 defaults so utility
+   * classes (text-xs..text-4xl) compose without surprises. Line-height
+   * tokens are applied per element/component, not paired statically. */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+}
+
+/* Dark-theme overrides for the semantic palette. The .dark class is set
+ * by ThemeProvider for dark mode; combining it with the data-theme
+ * attribute scopes the override to v1 + dark only. Lighter, less
+ * saturated values to compensate for the dark surface. */
+.dark[data-theme="cogni-os-v1"] {
+  --success: oklch(0.72 0.14 152);
+  --success-foreground: oklch(0.18 0.04 145);
+  --warning: oklch(0.82 0.155 75);
+  --warning-foreground: oklch(0.18 0.04 75);
+  --info: oklch(0.7 0.145 240);
+  --info-foreground: oklch(0.18 0.04 240);
+}

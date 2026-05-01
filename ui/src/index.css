@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* COG-124 Pixel v1 brand layer — activates only under data-theme="cogni-os-v1". */
+@import "./cogni-os-v1.css";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

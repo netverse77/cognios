@@ -19,6 +19,7 @@ interface ThemeContextValue {
 const THEME_STORAGE_KEY = "paperclip.theme";
 const DARK_THEME_COLOR = "#18181b";
 const LIGHT_THEME_COLOR = "#ffffff";
+const COGNI_OS_BRAND_TOKEN = "cogni-os-v1";
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 function resolveThemeFromDocument(): Theme {
@@ -38,6 +39,23 @@ function applyTheme(theme: Theme) {
   }
 }
 
+// COG-124 Pixel v1 brand layer.
+// THEME_COGNI_OS=1 in the deployment env → VITE_THEME_COGNI_OS=1 reaches
+// the Vite client (the VITE_ prefix is required for client exposure).
+// When on, set data-theme="cogni-os-v1" on <html> so the v1 token layer
+// in cogni-os-v1.css activates. Default off — COG-114 interim tokens
+// remain live until packaging flips the flag.
+function applyBrandLayer() {
+  if (typeof document === "undefined") return;
+  const flag = import.meta.env.VITE_THEME_COGNI_OS;
+  const enabled = flag === "1" || flag === "true";
+  if (enabled) {
+    document.documentElement.setAttribute("data-theme", COGNI_OS_BRAND_TOKEN);
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => resolveThemeFromDocument());
 
@@ -47,6 +65,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const toggleTheme = useCallback(() => {
     setThemeState((current) => (current === "dark" ? "light" : "dark"));
+  }, []);
+
+  useEffect(() => {
+    applyBrandLayer();
   }, []);
 
   useEffect(() => {
