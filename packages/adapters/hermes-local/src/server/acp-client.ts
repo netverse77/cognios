@@ -18,6 +18,7 @@
 // can `pnpm install` and typecheck against the real SDK.
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { Readable, Writable } from "node:stream";
 
 import type { HermesProcessHandle } from "./process-registry.js";
 import { emitSessionUpdate, type SessionUpdateEnvelope } from "./transcript.js";
@@ -166,6 +167,20 @@ export async function createAcpClient(
  * package can compile (and run unit tests against pure modules like
  * prompt-builder/process-registry) even when @agentclientprotocol/sdk is
  * not yet installed in the workspace.
+ *
+ * v0.11.0 ClientSideConnection signature (per dist/acp.d.ts:226):
+ *
+ *   constructor(toClient: (agent: Agent) => Client, stream: Stream)
+ *
+ * - `toClient` is a factory that receives the Agent proxy (exposed by the
+ *   connection itself once it's constructed) and returns the Client handler
+ *   object. This lets the Client implementation hold a reference to the
+ *   remote Agent for outbound calls. We don't need that reference here, so
+ *   we ignore it and return a plain handler.
+ * - `stream` is a single `{ readable, writable }` of `AnyMessage` chunks.
+ *   For stdio transport we wrap Node's child stdio into Web streams and
+ *   pipe through `ndJsonStream` to get the message-typed pair the SDK
+ *   wants.
  */
 async function connectClientSide(
   child: ChildProcessWithoutNullStreams,
@@ -180,21 +195,31 @@ async function connectClientSide(
     );
   });
 
-  // The SDK's exact streaming shape (Web ReadableStream vs Node Duplex) is
-  // the most likely place for an H3 fix. The wiring below is intentionally
-  // narrow: hand the SDK whatever stream pair it accepts, and route Hermes'
-  // session/update notifications through our transcript translator.
+  // Convert Node's child stdio to Web streams of bytes. Hermes' ACP server
+  // reads JSON-RPC frames from stdin and writes responses to stdout, so the
+  // adapter writes to `child.stdin` and reads from `child.stdout`.
+  const childStdoutWeb = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>;
+  const childStdinWeb = Writable.toWeb(child.stdin) as WritableStream<Uint8Array>;
+
+  // ndJsonStream(output, input): the SDK's helper that adapts a byte-stream
+  // pair into a message-stream pair (newline-delimited JSON in both
+  // directions). `output` is what the SDK writes to (-> child stdin) and
+  // `input` is what the SDK reads from (-> child stdout).
+  const stream = sdk.ndJsonStream(childStdinWeb, childStdoutWeb);
+
+  // First constructor arg is `toClient: (agent) => Client`. We ignore the
+  // passed-in agent reference and return the Client handler directly. The
+  // adapter only handles `sessionUpdate` notifications (we declared zero
+  // fs/terminal capabilities on `initialize`, so nothing else should be
+  // dispatched our way).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const connection: SdkConnection = new sdk.ClientSideConnection(
-    {
-      // Client-side handlers. We only declare the one Hermes will actually
-      // call given our empty capabilities.
-      sessionUpdate: async (params: SessionUpdateEnvelope) => {
-        await emitSessionUpdate(ctx, params);
-      },
+  const toClient = (_agent: any) => ({
+    sessionUpdate: async (params: SessionUpdateEnvelope) => {
+      await emitSessionUpdate(ctx, params);
     },
-    child.stdout,
-    child.stdin,
-  );
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const connection: SdkConnection = new sdk.ClientSideConnection(toClient, stream);
   return connection;
 }
