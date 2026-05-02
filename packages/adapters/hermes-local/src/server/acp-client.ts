@@ -79,8 +79,8 @@ interface SdkConnection {
     clientCapabilities?: Record<string, unknown>;
     clientInfo?: { name: string; title?: string; version?: string };
   }): Promise<InitializeResult>;
-  newSession(params: { cwd: string; mcpServers?: unknown[] }): Promise<NewSessionResult>;
-  loadSession?(params: { sessionId: string; cwd: string; mcpServers?: unknown[] }): Promise<unknown>;
+  newSession(params: { cwd: string; mcpServers: unknown[] }): Promise<NewSessionResult>;
+  loadSession?(params: { sessionId: string; cwd: string; mcpServers: unknown[] }): Promise<unknown>;
   prompt(params: {
     sessionId: string;
     prompt: Array<{ type: "text"; text: string }>;
@@ -125,7 +125,10 @@ export async function createAcpClient(
       return result;
     },
     async newSession(cwd) {
-      const result = await connection.newSession({ cwd });
+      // `mcpServers` is required by ACP `session/new` (NewSessionRequest in
+      // @agentclientprotocol/sdk@0.11). Spike posture: zero MCP servers —
+      // Hermes brings its own tool surface, the adapter doesn't proxy any.
+      const result = await connection.newSession({ cwd, mcpServers: [] });
       handle.sessionId = result.sessionId;
       return result;
     },
@@ -133,11 +136,11 @@ export async function createAcpClient(
       if (typeof connection.loadSession !== "function") {
         // Hermes advertises loadSession=true; if the SDK does not expose it,
         // fall back to a fresh session and lose continuity for this turn.
-        const fresh = await connection.newSession({ cwd });
+        const fresh = await connection.newSession({ cwd, mcpServers: [] });
         handle.sessionId = fresh.sessionId;
         return;
       }
-      await connection.loadSession({ sessionId, cwd });
+      await connection.loadSession({ sessionId, cwd, mcpServers: [] });
       handle.sessionId = sessionId;
     },
     async prompt(sessionId, text, opts) {

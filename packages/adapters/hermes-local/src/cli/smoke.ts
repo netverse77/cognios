@@ -269,7 +269,7 @@ async function runSkipPromptSmoke(
 
     success = true;
   } catch (err) {
-    const message = err instanceof Error ? err.stack || err.message : String(err);
+    const message = formatError(err);
     process.stderr.write(`[hermes_local:smoke] FAIL --skip-prompt\n${message}\n`);
   } finally {
     registry.shutdown();
@@ -283,7 +283,31 @@ async function runSkipPromptSmoke(
 }
 
 main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.stack || err.message : String(err);
+  const message = formatError(err);
   process.stderr.write(`[hermes_local:smoke] FATAL\n${message}\n`);
   process.exit(1);
 });
+
+/**
+ * Stringify an unknown thrown value for CI logs. The ACP SDK throws plain
+ * JSON-RPC error objects of shape `{ code, message, data }` (not Error
+ * instances) when the agent returns an error response, so falling back to
+ * `String(err)` would print "[object Object]". Prefer `Error.stack`/`message`
+ * when available, then JSON, then the unhelpful default.
+ */
+function formatError(err: unknown): string {
+  if (err instanceof Error) {
+    return err.stack || err.message;
+  }
+  if (err === null || err === undefined) {
+    return String(err);
+  }
+  if (typeof err === "object") {
+    try {
+      return JSON.stringify(err, null, 2);
+    } catch {
+      return String(err);
+    }
+  }
+  return String(err);
+}
