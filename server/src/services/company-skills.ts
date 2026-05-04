@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { and, asc, eq } from "drizzle-orm";
@@ -133,6 +134,9 @@ type SkillSourceMeta = {
   workspaceId?: string;
   workspaceName?: string;
   workspaceCwd?: string;
+  hermesHome?: string;
+  hermesNamespace?: string;
+  hermesRelativePath?: string;
 };
 
 export type LocalSkillInventoryMode = "full" | "project_root";
@@ -361,6 +365,17 @@ function deriveCanonicalSkillKey(
     const locator = asString(input.sourceLocator);
     if (locator) {
       return `local/${hashSkillValue(path.resolve(locator))}/${slug}`;
+    }
+  }
+
+  if (input.sourceType === "hermes_local" || sourceKind === "hermes_local") {
+    const locator = asString(input.sourceLocator);
+    const namespace = asString(metadata?.hermesNamespace);
+    if (namespace && locator) {
+      return `hermes_local/${normalizeSkillSlug(namespace) ?? "ns"}/${slug}`;
+    }
+    if (locator) {
+      return `hermes_local/${hashSkillValue(locator)}/${slug}`;
     }
   }
 
@@ -1046,6 +1061,102 @@ async function readLocalSkillImports(companyId: string, sourcePath: string): Pro
   return imports;
 }
 
+/**
+ * Marker namespace inside `${hermesHome}/skills/` that holds skills synced
+ * outbound from Paperclip (COG-132 H1). The inbound importer skips this
+ * subtree to prevent a round-trip sync loop.
+ */
+const HERMES_PAPERCLIP_NAMESPACE = "paperclip";
+
+const HERMES_LOCAL_SOURCE_TOKEN = "hermes://local";
+
+export function resolveHermesHomeFromConfig(config: Record<string, unknown> | null | undefined): string {
+  const configured = asString(config?.hermesHome);
+  if (configured) return path.resolve(configured);
+  const envHome = asString(process.env.HERMES_HOME);
+  if (envHome) return path.resolve(envHome);
+  return path.join(os.homedir(), ".hermes");
+}
+
+export async function readHermesLocalSkillImports(
+  companyId: string,
+  hermesHome: string,
+): Promise<ImportedSkill[]> {
+  const skillsRoot = path.join(hermesHome, "skills");
+  const stat = await fs.stat(skillsRoot).catch(() => null);
+  if (!stat?.isDirectory()) {
+    throw unprocessable(`Hermes skills directory does not exist: ${skillsRoot}`);
+  }
+
+  const allFiles: string[] = [];
+  await walkLocalFiles(skillsRoot, skillsRoot, allFiles);
+
+  const skillFiles = allFiles.filter((entry) => path.posix.basename(entry).toLowerCase() === "skill.md");
+  const filteredSkillFiles = skillFiles.filter((entry) => {
+    const segments = entry.split("/");
+    return segments[0] !== HERMES_PAPERCLIP_NAMESPACE;
+  });
+
+  const imports: ImportedSkill[] = [];
+  for (const relativeSkillPath of filteredSkillFiles) {
+    const skillRelativeDir = path.posix.dirname(relativeSkillPath);
+    const skillAbsoluteDir = path.join(skillsRoot, skillRelativeDir);
+    const skillAbsoluteFile = path.join(skillsRoot, relativeSkillPath);
+
+    const markdown = await fs.readFile(skillAbsoluteFile, "utf8");
+    const parsed = parseFrontmatterMarkdown(markdown);
+    const slug = deriveImportedSkillSlug(parsed.frontmatter, path.posix.basename(skillRelativeDir));
+    const namespace = skillRelativeDir.includes("/") ? skillRelativeDir.split("/")[0] ?? null : null;
+
+    const inventory = allFiles
+      .filter((entry) => entry === relativeSkillPath || entry.startsWith(`${skillRelativeDir}/`))
+      .map((entry) => {
+        const relative = entry === relativeSkillPath
+          ? "SKILL.md"
+          : entry.slice(skillRelativeDir.length + 1);
+        return {
+          path: normalizePortablePath(relative),
+          kind: classifyInventoryKind(relative),
+        };
+      })
+      .sort((left, right) => left.path.localeCompare(right.path));
+
+    const parsedMetadata = isPlainRecord(parsed.frontmatter.metadata) ? parsed.frontmatter.metadata : null;
+    const skillKey = readCanonicalSkillKey(parsed.frontmatter, parsedMetadata);
+    const metadata = {
+      ...(skillKey ? { skillKey } : {}),
+      ...(parsedMetadata ?? {}),
+      sourceKind: "hermes_local",
+      hermesHome,
+      hermesNamespace: namespace,
+      hermesRelativePath: skillRelativeDir,
+    };
+
+    imports.push({
+      key: deriveCanonicalSkillKey(companyId, {
+        slug,
+        sourceType: "hermes_local",
+        sourceLocator: skillRelativeDir,
+        metadata,
+      }),
+      slug,
+      name: asString(parsed.frontmatter.name) ?? slug,
+      description: asString(parsed.frontmatter.description),
+      markdown,
+      packageDir: skillAbsoluteDir,
+      sourceType: "hermes_local",
+      sourceLocator: skillRelativeDir,
+      sourceRef: null,
+      trustLevel: deriveTrustLevel(inventory),
+      compatibility: "compatible",
+      fileInventory: inventory,
+      metadata,
+    });
+  }
+
+  return imports;
+}
+
 async function readUrlSkillImports(
   companyId: string,
   sourceUrl: string,
@@ -1469,6 +1580,23 @@ function deriveSkillSourceInfo(skill: SkillSourceInfoTarget): {
       editableReason: "URL-based skills are read-only. Save them locally to edit them.",
       sourceLabel: skill.sourceLocator,
       sourceBadge: "url",
+      sourcePath: null,
+    };
+  }
+
+  if (skill.sourceType === "hermes_local") {
+    const namespace = asString(metadata.hermesNamespace);
+    const hermesHome = asString(metadata.hermesHome);
+    const label = namespace
+      ? `Hermes (${namespace})`
+      : hermesHome
+        ? `Hermes ${hermesHome}`
+        : skill.sourceLocator;
+    return {
+      editable: false,
+      editableReason: "Hermes-local skills are imported read-only from the Hermes filesystem. Edit them in Hermes and re-import.",
+      sourceLabel: label,
+      sourceBadge: "hermes_local",
       sourcePath: null,
     };
   }
@@ -2367,8 +2495,41 @@ export function companySkillService(db: Db) {
     return out;
   }
 
-  async function importFromSource(companyId: string, source: string): Promise<CompanySkillImportResult> {
+  async function importFromSource(
+    companyId: string,
+    source: string,
+    options: { agentId?: string } = {},
+  ): Promise<CompanySkillImportResult> {
     await ensureSkillInventoryCurrent(companyId);
+
+    const trimmedSource = source.trim();
+    if (trimmedSource.toLowerCase().startsWith(HERMES_LOCAL_SOURCE_TOKEN)) {
+      const hermesConfig: Record<string, unknown> | null = options.agentId
+        ? await (async () => {
+          const agent = await agents.getById(options.agentId!);
+          if (!agent) {
+            throw unprocessable(`Agent ${options.agentId} not found for hermes://local import.`);
+          }
+          if (agent.companyId !== companyId) {
+            throw unprocessable(`Agent ${options.agentId} does not belong to company ${companyId}.`);
+          }
+          if (agent.adapterType !== "hermes_local") {
+            throw unprocessable(`Agent ${options.agentId} is not a hermes_local adapter (got ${agent.adapterType}).`);
+          }
+          return (agent.adapterConfig ?? {}) as Record<string, unknown>;
+        })()
+        : null;
+      const hermesHome = resolveHermesHomeFromConfig(hermesConfig);
+      const skills = await readHermesLocalSkillImports(companyId, hermesHome);
+      if (skills.length === 0) {
+        throw unprocessable(
+          `No importable skills were found under ${path.join(hermesHome, "skills")} (paperclip/* is excluded).`,
+        );
+      }
+      const imported = await upsertImportedSkills(companyId, skills);
+      return { imported, warnings: [] };
+    }
+
     const parsed = parseSkillImportSourceInput(source);
     const local = !/^https?:\/\//i.test(parsed.resolvedSource);
     const { skills, warnings } = local
