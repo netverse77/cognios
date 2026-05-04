@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!--
+    Cogni OS v1 favicon — Sigil mark (C+O letterform monogram).
+    Geometry mirrors SigilGlyph in ui/src/components/Wordmark.tsx exactly.
+    Staged for the packaging-flip swap (THEME_COGNI_OS=1) — the deployment
+    swaps favicon.svg → this file alongside flipping the brand-layer flag.
+    Until then the COG-114 paperclip favicon stays live.
+  -->
+  <style>
+    .mark { fill: #18181b; stroke: #18181b; }
+    @media (prefers-color-scheme: dark) {
+      .mark { fill: #e4e4e7; stroke: #e4e4e7; }
+    }
+  </style>
+  <!-- C — outer arc, opens 60° to the right, square-cap terminals -->
+  <path
+    class="mark"
+    d="M 26.83 9.75 A 12.5 12.5 0 1 0 26.83 22.25"
+    stroke-width="4"
+    stroke-linecap="butt"
+    fill="none"
+  />
+  <!-- O — inner filled circle -->
+  <circle class="mark" cx="16" cy="16" r="4" stroke="none" />
+</svg>

@@ -1,0 +1,273 @@
+/*
+ * Cogni OS — Pixel v1 brand layer (COG-124 HB3, complete)
+ *
+ * Token + named-motion additions that activate when `data-theme="cogni-os-v1"`
+ * is set on the <html> root. ThemeProvider sets this attribute when the env
+ * flag VITE_THEME_COGNI_OS=1 is on (the public-surface equivalent of the
+ * spec's THEME_COGNI_OS=1 — Vite client requires the VITE_ prefix to expose
+ * it).
+ *
+ * Default off: the COG-114 interim tokens defined in index.css remain the
+ * live palette and type stack until packaging flips the flag.
+ *
+ * Scope of this file (HB3, complete):
+ *   - Palette semantic tokens — success, warning, info (with -foreground
+ *     pairs). The -destructive token already exists in the COG-114 base
+ *     and serves as the "error" semantic — not duplicated here.
+ *   - Typography ramp — body/mono faces, weight scale, text-size ramp,
+ *     line-height tokens. Display face inherits from the COG-114 base.
+ *   - Named-motion library — state transitions, drawer/modal entry+exit,
+ *     kanban-card move, toast entry+exit. All composed from the existing
+ *     COG-114 duration + easing tokens (no bespoke values inside primitives).
+ *     prefers-reduced-motion override collapses everything to opacity-only.
+ *
+ * Out of scope for this file (delivered elsewhere):
+ *   - Sigil mark variants — HB4, lives in component code (Wordmark.tsx
+ *     replaces its interim glyph with the locked Sigil).
+ *   - Entry-from-particle-drift signature brand motion on the Sigil — HB5,
+ *     lands as a named motion primitive paired with the mark.
+ *   - Storybook stories under "Cogni OS v1" — HB5.
+ *   - WCAG AA contrast audit — HB6.
+ *
+ * License notes: Inter and JetBrains Mono are both OFL-licensed. No
+ * paid-license fonts in v1.
+ */
+
+:root[data-theme="cogni-os-v1"] {
+  /* ---- Semantic palette (light) ----
+   * Hue spacing: success 152 (green), warning 75 (amber), info 240 (true
+   * blue, deliberately distinct from primary teal at hue 198 to avoid
+   * confusion). Destructive stays at 27 (red, defined in COG-114 base).
+   *
+   * HB6 contrast audit (CSS Color 4 OKLCH → sRGB → WCAG 2.1 ratio):
+   *   success — 4.97:1 — PASS AA       (initial L=0.62 was 3.30 — failed)
+   *   warning — 8.49:1 — PASS AAA
+   *   info    — 4.51:1 — PASS AA
+   */
+  --success: oklch(0.52 0.13 152);
+  --success-foreground: oklch(0.985 0.005 145);
+  --warning: oklch(0.78 0.155 75);
+  --warning-foreground: oklch(0.22 0.04 75);
+  --info: oklch(0.55 0.14 240);
+  --info-foreground: oklch(0.985 0.005 240);
+
+  /* ---- Typography ----
+   * Display face inherits from the COG-114 --font-display stack (Inter +
+   * system fallthrough). Body shares the display stack for v1 — a
+   * separate body face is a v1.1 refinement if a tighter pair is needed.
+   * Mono face is JetBrains Mono with broad fallback for terminal/code
+   * surfaces.
+   */
+  --font-body: var(--font-display);
+  --font-mono:
+    "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, "Liberation Mono", monospace;
+
+  /* Weight scale — four-stop ramp matches the existing usage in
+   * Wordmark.tsx (font-semibold + font-bold for the "OS" suffix). */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Text-size ramp — values match Tailwind v4 defaults so utility
+   * classes (text-xs..text-4xl) compose without surprises. Line-height
+   * tokens are applied per element/component, not paired statically. */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+}
+
+/* Dark-theme overrides for the semantic palette. The .dark class is set
+ * by ThemeProvider for dark mode; combining it with the data-theme
+ * attribute scopes the override to v1 + dark only. Lighter, less
+ * saturated values to compensate for the dark surface. */
+.dark[data-theme="cogni-os-v1"] {
+  --success: oklch(0.72 0.14 152);
+  --success-foreground: oklch(0.18 0.04 145);
+  --warning: oklch(0.82 0.155 75);
+  --warning-foreground: oklch(0.18 0.04 75);
+  --info: oklch(0.7 0.145 240);
+  --info-foreground: oklch(0.18 0.04 240);
+}
+
+/* ============================================================================
+ * Named-motion library
+ * ============================================================================
+ *
+ * Each primitive composes the existing COG-114 duration + easing tokens —
+ * no bespoke values inside primitives. A component opts into a named
+ * primitive by adding the corresponding class (and, for directional drawers,
+ * a `data-side` attribute). The library is gated under `data-theme=
+ * "cogni-os-v1"` so it activates with the rest of the v1 brand layer; in
+ * the COG-114 default theme the classes are inert.
+ *
+ * Primitives:
+ *   - .motion-state            — generic property change (transition)
+ *   - .motion-state-fast       — same, faster duration
+ *   - .motion-state-emphasized — same, emphasized easing for "settle" feel
+ *   - .motion-drawer-enter[data-side]  — slide+fade in from left/right
+ *   - .motion-drawer-exit[data-side]   — slide+fade out
+ *   - .motion-modal-enter      — fade + subtle scale up
+ *   - .motion-modal-exit       — fade + subtle scale down
+ *   - .motion-kanban-card      — transform + shadow transition for board cards
+ *   - .motion-toast-enter      — slide+fade in from bottom
+ *   - .motion-toast-exit       — slide+fade out to bottom
+ *
+ * Reduced-motion: `prefers-reduced-motion: reduce` collapses every primitive
+ * to opacity-only with the fastest duration token. The visual signal that
+ * state changed is preserved; the movement is not.
+ */
+
+[data-theme="cogni-os-v1"] .motion-state {
+  transition-duration: var(--duration-base);
+  transition-timing-function: var(--ease-standard);
+  transition-property: color, background-color, border-color, opacity, transform, box-shadow, fill, stroke;
+}
+[data-theme="cogni-os-v1"] .motion-state-fast {
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-standard);
+  transition-property: color, background-color, border-color, opacity, transform, box-shadow, fill, stroke;
+}
+[data-theme="cogni-os-v1"] .motion-state-emphasized {
+  transition-duration: var(--duration-base);
+  transition-timing-function: var(--ease-emphasized);
+  transition-property: color, background-color, border-color, opacity, transform, box-shadow, fill, stroke;
+}
+
+@keyframes cogni-os-v1-drawer-enter-from-left {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+@keyframes cogni-os-v1-drawer-enter-from-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes cogni-os-v1-drawer-exit-to-left {
+  from { transform: translateX(0);     opacity: 1; }
+  to   { transform: translateX(-100%); opacity: 0; }
+}
+@keyframes cogni-os-v1-drawer-exit-to-right {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(100%); opacity: 0; }
+}
+[data-theme="cogni-os-v1"] .motion-drawer-enter[data-side="left"] {
+  animation: cogni-os-v1-drawer-enter-from-left var(--duration-base) var(--ease-decelerate) forwards;
+}
+[data-theme="cogni-os-v1"] .motion-drawer-enter[data-side="right"] {
+  animation: cogni-os-v1-drawer-enter-from-right var(--duration-base) var(--ease-decelerate) forwards;
+}
+[data-theme="cogni-os-v1"] .motion-drawer-exit[data-side="left"] {
+  animation: cogni-os-v1-drawer-exit-to-left var(--duration-fast) var(--ease-accelerate) forwards;
+}
+[data-theme="cogni-os-v1"] .motion-drawer-exit[data-side="right"] {
+  animation: cogni-os-v1-drawer-exit-to-right var(--duration-fast) var(--ease-accelerate) forwards;
+}
+
+@keyframes cogni-os-v1-modal-enter {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1);    }
+}
+@keyframes cogni-os-v1-modal-exit {
+  from { opacity: 1; transform: scale(1);    }
+  to   { opacity: 0; transform: scale(0.98); }
+}
+[data-theme="cogni-os-v1"] .motion-modal-enter {
+  animation: cogni-os-v1-modal-enter var(--duration-base) var(--ease-emphasized) forwards;
+}
+[data-theme="cogni-os-v1"] .motion-modal-exit {
+  animation: cogni-os-v1-modal-exit var(--duration-fast) var(--ease-accelerate) forwards;
+}
+
+[data-theme="cogni-os-v1"] .motion-kanban-card {
+  transition:
+    transform var(--duration-base) var(--ease-emphasized),
+    box-shadow var(--duration-base) var(--ease-standard);
+}
+
+@keyframes cogni-os-v1-toast-enter-from-bottom {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+@keyframes cogni-os-v1-toast-exit-to-bottom {
+  from { transform: translateY(0);    opacity: 1; }
+  to   { transform: translateY(100%); opacity: 0; }
+}
+[data-theme="cogni-os-v1"] .motion-toast-enter {
+  animation: cogni-os-v1-toast-enter-from-bottom var(--duration-base) var(--ease-decelerate) forwards;
+}
+[data-theme="cogni-os-v1"] .motion-toast-exit {
+  animation: cogni-os-v1-toast-exit-to-bottom var(--duration-fast) var(--ease-accelerate) forwards;
+}
+
+/* ----------------------------------------------------------------------------
+ * Sigil entry — signature brand motion (CEO HB6 acceptance requirement)
+ * ----------------------------------------------------------------------------
+ * "Letters resolve out of a particle drift" — the static Sigil mark fades
+ * in from a blurred, slightly-scaled-down state to its final resolved
+ * state. This is the brand's signature transition: it's how the static
+ * mark honors CEO's "motion is non-negotiable" mandate without animating
+ * the favicon. Pair this primitive with the SigilGlyph at every brand-
+ * entry moment (splash, route change to brand surfaces, dialog header).
+ *
+ * Implementation: blur + opacity + subtle scale, eased with the
+ * emphasized curve over the slow duration. Pure CSS; no JS required.
+ * For a richer "particle" treatment in v1.1, swap this primitive for a
+ * Lottie/Framer-Motion implementation — components only depend on the
+ * named class, not the underlying technique.
+ */
+@keyframes cogni-os-v1-sigil-enter {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+}
+[data-theme="cogni-os-v1"] .motion-sigil-enter {
+  animation: cogni-os-v1-sigil-enter var(--duration-slow) var(--ease-emphasized) forwards;
+  /* Origin centers the scale so the resolve feels balanced regardless of
+   * surrounding layout (sidebar header, splash hero, dialog title). */
+  transform-origin: center;
+}
+
+/* prefers-reduced-motion override.
+ * Transitions retained at the fastest duration so state changes still feel
+ * intentional but don't move. Animations are dropped entirely; the element
+ * is left in its final visual state (opacity 1, no transform). */
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="cogni-os-v1"] .motion-state,
+  [data-theme="cogni-os-v1"] .motion-state-fast,
+  [data-theme="cogni-os-v1"] .motion-state-emphasized,
+  [data-theme="cogni-os-v1"] .motion-kanban-card {
+    transition-duration: var(--duration-fast);
+    transition-property: color, background-color, border-color, opacity, fill, stroke;
+  }
+  [data-theme="cogni-os-v1"] .motion-drawer-enter,
+  [data-theme="cogni-os-v1"] .motion-drawer-exit,
+  [data-theme="cogni-os-v1"] .motion-modal-enter,
+  [data-theme="cogni-os-v1"] .motion-modal-exit,
+  [data-theme="cogni-os-v1"] .motion-toast-enter,
+  [data-theme="cogni-os-v1"] .motion-toast-exit,
+  [data-theme="cogni-os-v1"] .motion-sigil-enter {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+}
