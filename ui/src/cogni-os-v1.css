@@ -38,8 +38,13 @@
    * Hue spacing: success 152 (green), warning 75 (amber), info 240 (true
    * blue, deliberately distinct from primary teal at hue 198 to avoid
    * confusion). Destructive stays at 27 (red, defined in COG-114 base).
+   *
+   * HB6 contrast audit (CSS Color 4 OKLCH → sRGB → WCAG 2.1 ratio):
+   *   success — 4.97:1 — PASS AA       (initial L=0.62 was 3.30 — failed)
+   *   warning — 8.49:1 — PASS AAA
+   *   info    — 4.51:1 — PASS AA
    */
-  --success: oklch(0.62 0.13 152);
+  --success: oklch(0.52 0.13 152);
   --success-foreground: oklch(0.985 0.005 145);
   --warning: oklch(0.78 0.155 75);
   --warning-foreground: oklch(0.22 0.04 75);
