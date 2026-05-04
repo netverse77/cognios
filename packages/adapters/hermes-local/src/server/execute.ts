@@ -22,6 +22,16 @@ const DEFAULT_GRACE_SEC = 5;
 // adapter package stays loaded.
 const processRegistry = new HermesProcessRegistry();
 
+/**
+ * Public accessor for the long-lived in-tree process registry. Side-channel
+ * features (e.g. the COG-116 H3 heartbeat-context memory bridge) read from
+ * this registry to find an already-spawned ACP process without paying for
+ * a fresh acquire().
+ */
+export function getDefaultHermesProcessRegistry(): HermesProcessRegistry {
+  return processRegistry;
+}
+
 /** Test-only helper. Not exported through the package barrel. */
 export function __getRegistry(): HermesProcessRegistry {
   return processRegistry;

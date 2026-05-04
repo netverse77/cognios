@@ -1,4 +1,4 @@
-export { execute } from "./execute.js";
+export { execute, getDefaultHermesProcessRegistry } from "./execute.js";
 export { testEnvironment } from "./test.js";
 export { sessionCodec } from "./session-codec.js";
 export {
@@ -21,3 +21,9 @@ export {
   resolveHermesHomeFromAdapterConfig,
   resolveHermesPaperclipSkillsRoot,
 } from "./skills.js";
+export {
+  searchFacts,
+  type MemorySnippet,
+  type AcpExtMethodConnection,
+  type HermesProcessHandleWithConnection,
+} from "./memory.js";

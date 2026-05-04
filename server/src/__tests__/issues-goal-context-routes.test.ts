@@ -10,6 +10,7 @@ const mockIssueService = vi.hoisted(() => ({
   getCommentCursor: vi.fn(),
   getComment: vi.fn(),
   listAttachments: vi.fn(),
+  listComments: vi.fn(),
 }));
 
 const mockProjectService = vi.hoisted(() => ({
@@ -161,6 +162,7 @@ describe("issue goal context routes", () => {
     });
     mockIssueService.getComment.mockResolvedValue(null);
     mockIssueService.listAttachments.mockResolvedValue([]);
+    mockIssueService.listComments.mockResolvedValue([]);
     mockDocumentsService.getIssueDocumentPayload.mockResolvedValue({});
     mockDocumentsService.getIssueDocumentByKey.mockResolvedValue(null);
     mockExecutionWorkspaceService.getById.mockResolvedValue(null);
