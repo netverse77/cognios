@@ -27,3 +27,4 @@ export {
   type AcpExtMethodConnection,
   type HermesProcessHandleWithConnection,
 } from "./memory.js";
+export { getUserModel, type UserModelSnapshot } from "./honcho.js";
