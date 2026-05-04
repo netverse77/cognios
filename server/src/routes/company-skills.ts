@@ -194,7 +194,9 @@ export function companySkillRoutes(db: Db) {
       const companyId = req.params.companyId as string;
       await assertCanMutateCompanySkills(req, companyId);
       const source = String(req.body.source ?? "");
-      const result = await svc.importFromSource(companyId, source);
+      const rawAgentId = req.body.agentId;
+      const agentId = typeof rawAgentId === "string" && rawAgentId.length > 0 ? rawAgentId : undefined;
+      const result = await svc.importFromSource(companyId, source, { agentId });
 
       const actor = getActorInfo(req);
       await logActivity(db, {

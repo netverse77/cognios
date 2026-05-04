@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-export const companySkillSourceTypeSchema = z.enum(["local_path", "github", "url", "catalog", "skills_sh"]);
+export const companySkillSourceTypeSchema = z.enum(["local_path", "github", "url", "catalog", "skills_sh", "hermes_local"]);
 export const companySkillTrustLevelSchema = z.enum(["markdown_only", "assets", "scripts_executables"]);
 export const companySkillCompatibilitySchema = z.enum(["compatible", "unknown", "invalid"]);
-export const companySkillSourceBadgeSchema = z.enum(["paperclip", "github", "local", "url", "catalog", "skills_sh"]);
+export const companySkillSourceBadgeSchema = z.enum(["paperclip", "github", "local", "url", "catalog", "skills_sh", "hermes_local"]);
 
 export const companySkillFileInventoryEntrySchema = z.object({
   path: z.string().min(1),
@@ -68,6 +68,7 @@ export const companySkillUpdateStatusSchema = z.object({
 
 export const companySkillImportSchema = z.object({
   source: z.string().min(1),
+  agentId: z.string().uuid().optional(),
 });
 
 export const companySkillProjectScanRequestSchema = z.object({
