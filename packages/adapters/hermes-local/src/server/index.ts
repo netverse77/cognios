@@ -14,3 +14,9 @@ export {
   type HermesProcessHandle,
   type HermesProcessSnapshot,
 } from "./process-registry.js";
+export {
+  listHermesSkills,
+  syncHermesSkills,
+  resolveHermesDesiredSkillNames,
+  resolveHermesPaperclipSkillsRoot,
+} from "./skills.js";
