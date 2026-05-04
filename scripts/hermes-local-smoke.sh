@@ -2,11 +2,23 @@
 # scripts/hermes-local-smoke.sh
 #
 # H3 / H4 board-mandated smoke test for the in-tree hermes_local adapter.
-# Drives a single bounded ACP turn against `python -m acp_adapter.entry`,
-# then asserts that:
-#   - the adapter's process registry spawned a real child,
-#   - ACP initialize → newSession → prompt completed without error,
-#   - exitCode is 0 (success).
+# Drives an ACP exchange against `python -m acp_adapter.entry` and asserts
+# the adapter's process registry spawned a real child, the JSON-RPC framing
+# round-trips, and exitCode is 0 (success).
+#
+# Three modes (the smoke driver picks one based on flags / env):
+#   1. --initialize-only (HERMES_SMOKE_INITIALIZE_ONLY=1) — the CI default.
+#      Runs `initialize` only and asserts a numeric protocolVersion came
+#      back. Provider-independent: works without an LLM provider configured
+#      on the Hermes side. This is what GitHub Actions runs, since CI has
+#      no provider creds. (COG-128.)
+#   2. --skip-prompt (HERMES_SMOKE_SKIP_PROMPT=1) — initialize + newSession.
+#      Provider-equipped envs (local dev with HERMES_HOME/.env, or a CI
+#      job with a secret-injected provider key) that want to validate the
+#      session-construction path without driving a full prompt turn.
+#   3. (default, no flag) — initialize + newSession + prompt. Full bounded
+#      turn. Requires a configured LLM provider. Used when validating the
+#      end-to-end ACP contract locally (COG-115 §7 acceptance row 3).
 #
 # Preconditions (script will fail loudly if they are missing):
 #   1. cognios workspace has been `pnpm install`-ed (so @agentclientprotocol/sdk
@@ -14,8 +26,9 @@
 #   2. Python is available on $PATH (3.10+) AND `acp_adapter.entry` is
 #      importable (i.e. the operator's Hermes checkout is set up — set
 #      HERMES_REPO_PATH to point at it).
-#   3. Whatever LLM provider Hermes is configured against has live credentials
-#      (Nous Portal / OpenRouter / OpenAI / etc., per acp_adapter/auth.py).
+#   3. For mode (2) / (3): whatever LLM provider Hermes is configured
+#      against has live credentials (Nous Portal / OpenRouter / OpenAI /
+#      etc., per acp_adapter/auth.py). Mode (1) does not need this.
 #
 # This is the source of truth for the COG-115 §7 acceptance check
 # "One real Paperclip heartbeat completes E2E and updates an issue." The
@@ -97,13 +110,23 @@ log "Hermes home: ${HERMES_HOME:-<default>}"
 
 cd "${REPO_ROOT}"
 
-# CI mode: run initialize + newSession only, skip the prompt turn (no LLM
-# provider creds in CI). Local devs with provider creds in HERMES_HOME/.env
-# can omit this flag to drive a full bounded ACP turn.
-SKIP_PROMPT_FLAG=()
-if [[ "${HERMES_SMOKE_SKIP_PROMPT:-}" == "1" ]]; then
-  SKIP_PROMPT_FLAG=( --skip-prompt )
-  log "skip-prompt mode: initialize + newSession only (CI default)"
+# Mode selection. The smoke driver also reads these env vars directly, so
+# either the env var or the explicit flag works; we forward the flag here
+# so the spawn line in CI logs is self-describing.
+#   HERMES_SMOKE_INITIALIZE_ONLY=1  -> --initialize-only (CI default; no provider needed)
+#   HERMES_SMOKE_SKIP_PROMPT=1      -> --skip-prompt     (initialize + newSession; needs provider)
+#   neither                         -> full bounded turn (initialize + newSession + prompt; needs provider)
+# If both env vars are set, --initialize-only wins (it is a strict subset);
+# this matches the precedence in the smoke driver itself.
+MODE_FLAG=()
+if [[ "${HERMES_SMOKE_INITIALIZE_ONLY:-}" == "1" ]]; then
+  MODE_FLAG=( --initialize-only )
+  log "initialize-only mode: initialize handshake only (CI default — no LLM provider required)"
+elif [[ "${HERMES_SMOKE_SKIP_PROMPT:-}" == "1" ]]; then
+  MODE_FLAG=( --skip-prompt )
+  log "skip-prompt mode: initialize + newSession only (provider-equipped envs)"
+else
+  log "full-turn mode: initialize + newSession + prompt (provider-equipped envs)"
 fi
 
 set +e
@@ -114,7 +137,7 @@ set +e
   ${HERMES_MODEL:+--model "${HERMES_MODEL}"} \
   ${HERMES_PROMPT:+--message "${HERMES_PROMPT}"} \
   --timeout-sec "${HERMES_SMOKE_TIMEOUT_SEC:-60}" \
-  "${SKIP_PROMPT_FLAG[@]}"
+  "${MODE_FLAG[@]}"
 status=$?
 set -e
 

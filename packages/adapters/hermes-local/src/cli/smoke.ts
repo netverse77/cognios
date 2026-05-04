@@ -36,6 +36,7 @@ interface CliArgs {
   command: string | null;
   args: string[] | null;
   skipPrompt: boolean;
+  initializeOnly: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -50,6 +51,7 @@ function parseArgs(argv: string[]): CliArgs {
       ? process.env.HERMES_ACP_ARGS.split(/\s+/).filter(Boolean)
       : null,
     skipPrompt: process.env.HERMES_SMOKE_SKIP_PROMPT === "1",
+    initializeOnly: process.env.HERMES_SMOKE_INITIALIZE_ONLY === "1",
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -85,10 +87,17 @@ function parseArgs(argv: string[]): CliArgs {
         break;
       case "--skip-prompt":
         // Stops after newSession — proves the live ACP wire-up
-        // (initialize + newSession round-trip) without needing an LLM
-        // provider key. Used by the CI smoke job, where no provider
-        // credentials are available.
+        // (initialize + newSession round-trip). Useful for dev/integration
+        // envs that have a provider configured but want to skip the
+        // bounded-turn prompt round-trip.
         out.skipPrompt = true;
+        break;
+      case "--initialize-only":
+        // Stops after initialize — the wire-protocol-only mode used by
+        // CI. Asserts the negotiated protocolVersion came back and exits
+        // 0. No newSession, so no LLM provider configuration is needed
+        // on the Hermes side. See COG-128 for the rationale.
+        out.initializeOnly = true;
         break;
       case "--help":
       case "-h":
@@ -121,10 +130,12 @@ function printHelp(): void {
       "  --model <id>            Model id passed through to the ACP session",
       "  --command <bin>         Override interpreter (default: python)",
       "  --args   <a b c>        Override args (default: -m acp_adapter.entry)",
-      "  --skip-prompt           Stop after initialize + newSession (CI mode without provider creds)",
+      "  --skip-prompt           Stop after initialize + newSession (provider-equipped envs that want to skip the prompt turn)",
+      "  --initialize-only       Stop after initialize (CI default — wire format only, no provider required)",
       "",
       "Env: HERMES_REPO_PATH, HERMES_HOME, HERMES_MODEL, HERMES_ACP_COMMAND,",
-      "     HERMES_ACP_ARGS, HERMES_SMOKE_SKIP_PROMPT (=1 enables --skip-prompt)",
+      "     HERMES_ACP_ARGS, HERMES_SMOKE_SKIP_PROMPT (=1 enables --skip-prompt),",
+      "     HERMES_SMOKE_INITIALIZE_ONLY (=1 enables --initialize-only)",
       "",
     ].join("\n"),
   );
@@ -181,8 +192,15 @@ async function main(): Promise<void> {
   };
 
   process.stderr.write(
-    `[hermes_local:smoke] launching ${args.command ?? "python"} ${(args.args ?? ["-m", "acp_adapter.entry"]).join(" ")} cwd=${args.hermesRepo ?? process.cwd()} skipPrompt=${args.skipPrompt}\n`,
+    `[hermes_local:smoke] launching ${args.command ?? "python"} ${(args.args ?? ["-m", "acp_adapter.entry"]).join(" ")} cwd=${args.hermesRepo ?? process.cwd()} initializeOnly=${args.initializeOnly} skipPrompt=${args.skipPrompt}\n`,
   );
+
+  // Mode precedence: --initialize-only is the most-restricted (handshake only,
+  // no provider needed) and wins if both are set, since it's a strict subset.
+  if (args.initializeOnly) {
+    await runInitializeOnlySmoke(ctx, config);
+    return;
+  }
 
   if (args.skipPrompt) {
     await runSkipPromptSmoke(ctx, config);
@@ -215,20 +233,79 @@ async function main(): Promise<void> {
 }
 
 /**
+ * --initialize-only code path.
+ *
+ * Drives `initialize` only against a live `python -m acp_adapter.entry`,
+ * asserts that the negotiated protocolVersion came back, and exits 0.
+ *
+ * This is the wire-protocol-only mode: it proves the registry + ACP client
+ * wrapper + JSON-RPC framing + process spawn all work end-to-end, without
+ * touching `session/new` (which constructs a session object that pulls a
+ * configured LLM provider). CI uses this mode because GitHub Actions has no
+ * LLM provider creds and `session/new` would otherwise fail with
+ * `No LLM provider configured`. See COG-128 for the rationale.
+ */
+async function runInitializeOnlySmoke(
+  ctx: AdapterExecutionContext,
+  config: Record<string, unknown>,
+): Promise<void> {
+  const registry = new HermesProcessRegistry();
+  const workspace = (ctx.context.paperclipWorkspace ?? {}) as { cwd?: string };
+  const spec = buildHermesProcessSpec({
+    agentId: ctx.agent.id,
+    companyId: ctx.agent.companyId,
+    config,
+    workspaceCwd: workspace.cwd ?? process.cwd(),
+  });
+  const handle = registry.acquire(spec);
+  process.stderr.write(
+    `[hermes_local:smoke] spawned pid=${handle.child.pid} cwd=${handle.spec.cwd} configIdentity=${handle.spec.configIdentity.slice(0, 12)}\n`,
+  );
+
+  handle.child.stderr.on("data", (chunk: Buffer) => {
+    process.stderr.write(`[acp:stderr] ${chunk.toString().replace(/\n+$/, "")}\n`);
+  });
+
+  let success = false;
+  try {
+    const client = await createAcpClient(handle, ctx);
+    const initResult = await client.initialize();
+    process.stderr.write(
+      `[hermes_local:smoke] initialize ok protocolVersion=${initResult.protocolVersion} agentInfo=${JSON.stringify(initResult.agentInfo ?? {})}\n`,
+    );
+
+    if (typeof initResult.protocolVersion !== "number") {
+      throw new Error(
+        `initialize returned non-numeric protocolVersion=${JSON.stringify(initResult.protocolVersion)}`,
+      );
+    }
+
+    success = true;
+  } catch (err) {
+    const message = formatError(err);
+    process.stderr.write(`[hermes_local:smoke] FAIL --initialize-only\n${message}\n`);
+  } finally {
+    registry.shutdown();
+  }
+
+  if (success) {
+    process.stderr.write(`[hermes_local:smoke] PASS (initialize-only mode)\n`);
+    process.exit(0);
+  }
+  process.exit(1);
+}
+
+/**
  * --skip-prompt code path.
  *
  * Drives `initialize` + `newSession` against a live `python -m acp_adapter.entry`
  * and exits as soon as the session id comes back. Captures the negotiated
- * protocol version and session id so CI logs carry the spike-doc evidence.
+ * protocol version and session id so logs carry the spike-doc evidence.
  *
- * This is the mode CI runs in: GitHub Actions has no LLM provider creds, so a
- * full `prompt(...)` would always fail with provider auth errors. The H3
- * board-mandated requirement is "first live ACP exchange" — `initialize` +
- * `newSession` *is* a live exchange, and it's the part the registry, ACP
- * client wrapper, JSON-RPC framing, and process spawn all depend on. The full
- * `prompt` turn happens in environments that do have provider creds (local
- * dev with `HERMES_HOME/.env` configured, or a CI job with a secret-injected
- * provider key — separate decision tracked on COG-115).
+ * Use this in dev/integration envs that have an LLM provider configured but
+ * want to skip the bounded-turn prompt round-trip. CI uses --initialize-only
+ * instead, since GitHub Actions has no provider creds and `session/new`
+ * fails with `No LLM provider configured` (see COG-128).
  */
 async function runSkipPromptSmoke(
   ctx: AdapterExecutionContext,
