@@ -10,6 +10,18 @@ const DEFAULT_FAVICON_LINKS = [
   '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />',
 ].join("\n");
 
+// COG-117 / COG-124 Pixel v1 brand layer favicon. Only emitted when
+// THEME_COGNI_OS=1 is set in the deployment env (i.e. the Cogni OS / AgenticOS
+// packaging surface). Worktree branding takes precedence so dynamic worktree
+// favicons still win over the static brand favicon.
+const COGNI_OS_V1_FAVICON_LINKS = [
+  '<link rel="icon" href="/favicon-cogni-os-v1.svg" type="image/svg+xml" sizes="any" />',
+  '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />',
+  '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />',
+].join("\n");
+
+const COGNI_OS_V1_THEME_TOKEN = "cogni-os-v1";
+
 export type WorktreeUiBranding = {
   enabled: boolean;
   name: string | null;
@@ -144,6 +156,15 @@ export function isWorktreeUiBrandingEnabled(env: NodeJS.ProcessEnv = process.env
   return isTruthyEnvValue(env.PAPERCLIP_IN_WORKTREE);
 }
 
+// COG-117 / COG-124 — packaging-level brand-layer flip. AgenticOS sets
+// THEME_COGNI_OS=1 (and VITE_THEME_COGNI_OS=1 at build time so the React
+// brand layer activates). Cognios upstream stays default-off so the OSS
+// Paperclip surface is unchanged unless deployed via AgenticOS or with the
+// flag explicitly set. Worktree branding wins when both are on.
+export function isCogniOsBrandThemeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isTruthyEnvValue(env.THEME_COGNI_OS);
+}
+
 export function getWorktreeUiBranding(env: NodeJS.ProcessEnv = process.env): WorktreeUiBranding {
   if (!isWorktreeUiBrandingEnabled(env)) {
     return {
@@ -168,25 +189,48 @@ export function getWorktreeUiBranding(env: NodeJS.ProcessEnv = process.env): Wor
   };
 }
 
-export function renderFaviconLinks(branding: WorktreeUiBranding): string {
-  if (!branding.enabled || !branding.faviconHref) return DEFAULT_FAVICON_LINKS;
-
-  const href = escapeHtmlAttribute(branding.faviconHref);
-  return [
-    `<link rel="icon" href="${href}" type="image/svg+xml" sizes="any" />`,
-    `<link rel="shortcut icon" href="${href}" type="image/svg+xml" />`,
-  ].join("\n");
+export function renderFaviconLinks(
+  branding: WorktreeUiBranding,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  if (branding.enabled && branding.faviconHref) {
+    const href = escapeHtmlAttribute(branding.faviconHref);
+    return [
+      `<link rel="icon" href="${href}" type="image/svg+xml" sizes="any" />`,
+      `<link rel="shortcut icon" href="${href}" type="image/svg+xml" />`,
+    ].join("\n");
+  }
+  if (isCogniOsBrandThemeEnabled(env)) {
+    return COGNI_OS_V1_FAVICON_LINKS;
+  }
+  return DEFAULT_FAVICON_LINKS;
 }
 
-export function renderRuntimeBrandingMeta(branding: WorktreeUiBranding): string {
-  if (!branding.enabled || !branding.name || !branding.color || !branding.textColor) return "";
+export function renderRuntimeBrandingMeta(
+  branding: WorktreeUiBranding,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const lines: string[] = [];
 
-  return [
-    '<meta name="paperclip-worktree-enabled" content="true" />',
-    `<meta name="paperclip-worktree-name" content="${escapeHtmlAttribute(branding.name)}" />`,
-    `<meta name="paperclip-worktree-color" content="${escapeHtmlAttribute(branding.color)}" />`,
-    `<meta name="paperclip-worktree-text-color" content="${escapeHtmlAttribute(branding.textColor)}" />`,
-  ].join("\n");
+  if (branding.enabled && branding.name && branding.color && branding.textColor) {
+    lines.push(
+      '<meta name="paperclip-worktree-enabled" content="true" />',
+      `<meta name="paperclip-worktree-name" content="${escapeHtmlAttribute(branding.name)}" />`,
+      `<meta name="paperclip-worktree-color" content="${escapeHtmlAttribute(branding.color)}" />`,
+      `<meta name="paperclip-worktree-text-color" content="${escapeHtmlAttribute(branding.textColor)}" />`,
+    );
+  }
+
+  // Brand-theme meta is independent of worktree branding — both can be set
+  // simultaneously. The client reads `paperclip-theme` to activate the v1
+  // token layer when the Vite build wasn't compiled with the flag baked in.
+  if (isCogniOsBrandThemeEnabled(env)) {
+    lines.push(
+      `<meta name="paperclip-theme" content="${COGNI_OS_V1_THEME_TOKEN}" />`,
+    );
+  }
+
+  return lines.join("\n");
 }
 
 function replaceMarkedBlock(html: string, startMarker: string, endMarker: string, content: string): string {
@@ -207,11 +251,16 @@ function replaceMarkedBlock(html: string, startMarker: string, endMarker: string
 
 export function applyUiBranding(html: string, env: NodeJS.ProcessEnv = process.env): string {
   const branding = getWorktreeUiBranding(env);
-  const withFavicon = replaceMarkedBlock(html, FAVICON_BLOCK_START, FAVICON_BLOCK_END, renderFaviconLinks(branding));
+  const withFavicon = replaceMarkedBlock(
+    html,
+    FAVICON_BLOCK_START,
+    FAVICON_BLOCK_END,
+    renderFaviconLinks(branding, env),
+  );
   return replaceMarkedBlock(
     withFavicon,
     RUNTIME_BRANDING_BLOCK_START,
     RUNTIME_BRANDING_BLOCK_END,
-    renderRuntimeBrandingMeta(branding),
+    renderRuntimeBrandingMeta(branding, env),
   );
 }

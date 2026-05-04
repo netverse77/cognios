@@ -38,6 +38,11 @@ FROM base AS build
 WORKDIR /app
 COPY --from=deps /app /app
 COPY . .
+# COG-117 / COG-124 — let downstream packaging (AgenticOS) bake the Pixel v1
+# brand layer into the Vite client by passing --build-arg VITE_THEME_COGNI_OS=1.
+# Default 0 keeps the upstream Paperclip surface unchanged.
+ARG VITE_THEME_COGNI_OS=0
+ENV VITE_THEME_COGNI_OS=$VITE_THEME_COGNI_OS
 RUN pnpm --filter @paperclipai/ui build
 RUN pnpm --filter @paperclipai/plugin-sdk build
 RUN pnpm --filter @paperclipai/server build
