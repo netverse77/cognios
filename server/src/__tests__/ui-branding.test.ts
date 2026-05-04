@@ -79,4 +79,30 @@ describe("ui branding", () => {
     expect(defaultHtml).toContain('href="/favicon.svg"');
     expect(defaultHtml).not.toContain('name="paperclip-worktree-name"');
   });
+
+  it("flips favicon and emits theme meta when THEME_COGNI_OS=1 (COG-117)", () => {
+    const branded = applyUiBranding(TEMPLATE, { THEME_COGNI_OS: "1" });
+    expect(branded).toContain('href="/favicon-cogni-os-v1.svg"');
+    expect(branded).toContain('name="paperclip-theme"');
+    expect(branded).toContain('content="cogni-os-v1"');
+    // Default Paperclip favicon links must be replaced, not augmented.
+    expect(branded).not.toContain('href="/favicon.svg"');
+    // Worktree-specific meta must NOT appear when only brand mode is on.
+    expect(branded).not.toContain('name="paperclip-worktree-name"');
+  });
+
+  it("worktree favicon takes precedence over brand favicon when both are set", () => {
+    const branded = applyUiBranding(TEMPLATE, {
+      PAPERCLIP_IN_WORKTREE: "true",
+      PAPERCLIP_WORKTREE_NAME: "paperclip-pr-432",
+      PAPERCLIP_WORKTREE_COLOR: "#4f86f7",
+      THEME_COGNI_OS: "1",
+    });
+    // Worktree dynamic SVG wins on favicon.
+    expect(branded).toContain("data:image/svg+xml,");
+    expect(branded).not.toContain('href="/favicon-cogni-os-v1.svg"');
+    // Both theme + worktree meta coexist.
+    expect(branded).toContain('name="paperclip-worktree-name"');
+    expect(branded).toContain('name="paperclip-theme"');
+  });
 });

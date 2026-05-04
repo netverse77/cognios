@@ -40,16 +40,22 @@ function applyTheme(theme: Theme) {
 }
 
 // COG-124 Pixel v1 brand layer.
-// THEME_COGNI_OS=1 in the deployment env → VITE_THEME_COGNI_OS=1 reaches
-// the Vite client (the VITE_ prefix is required for client exposure).
-// When on, set data-theme="cogni-os-v1" on <html> so the v1 token layer
-// in cogni-os-v1.css activates. Default off — COG-114 interim tokens
-// remain live until packaging flips the flag.
+// Two activation paths, both honoured at boot:
+//   - VITE_THEME_COGNI_OS=1 baked at Vite build time (build-time flip).
+//   - <meta name="paperclip-theme" content="cogni-os-v1"> injected by the
+//     server's ui-branding pipeline when THEME_COGNI_OS=1 is set in the
+//     deployment env (runtime flip — COG-117 packaging surface).
+// Either signal activates the v1 token layer in cogni-os-v1.css. Default
+// off — COG-114 interim tokens remain live until packaging flips the flag.
 function applyBrandLayer() {
   if (typeof document === "undefined") return;
-  const flag = import.meta.env.VITE_THEME_COGNI_OS;
-  const enabled = flag === "1" || flag === "true";
-  if (enabled) {
+  const buildFlag = import.meta.env.VITE_THEME_COGNI_OS;
+  const buildEnabled = buildFlag === "1" || buildFlag === "true";
+  const runtimeMeta = document
+    .querySelector<HTMLMetaElement>('meta[name="paperclip-theme"]')
+    ?.getAttribute("content");
+  const runtimeEnabled = runtimeMeta === COGNI_OS_BRAND_TOKEN;
+  if (buildEnabled || runtimeEnabled) {
     document.documentElement.setAttribute("data-theme", COGNI_OS_BRAND_TOKEN);
   } else {
     document.documentElement.removeAttribute("data-theme");
