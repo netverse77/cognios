@@ -205,6 +205,41 @@
   animation: cogni-os-v1-toast-exit-to-bottom var(--duration-fast) var(--ease-accelerate) forwards;
 }
 
+/* ----------------------------------------------------------------------------
+ * Sigil entry — signature brand motion (CEO HB6 acceptance requirement)
+ * ----------------------------------------------------------------------------
+ * "Letters resolve out of a particle drift" — the static Sigil mark fades
+ * in from a blurred, slightly-scaled-down state to its final resolved
+ * state. This is the brand's signature transition: it's how the static
+ * mark honors CEO's "motion is non-negotiable" mandate without animating
+ * the favicon. Pair this primitive with the SigilGlyph at every brand-
+ * entry moment (splash, route change to brand surfaces, dialog header).
+ *
+ * Implementation: blur + opacity + subtle scale, eased with the
+ * emphasized curve over the slow duration. Pure CSS; no JS required.
+ * For a richer "particle" treatment in v1.1, swap this primitive for a
+ * Lottie/Framer-Motion implementation — components only depend on the
+ * named class, not the underlying technique.
+ */
+@keyframes cogni-os-v1-sigil-enter {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+}
+[data-theme="cogni-os-v1"] .motion-sigil-enter {
+  animation: cogni-os-v1-sigil-enter var(--duration-slow) var(--ease-emphasized) forwards;
+  /* Origin centers the scale so the resolve feels balanced regardless of
+   * surrounding layout (sidebar header, splash hero, dialog title). */
+  transform-origin: center;
+}
+
 /* prefers-reduced-motion override.
  * Transitions retained at the fastest duration so state changes still feel
  * intentional but don't move. Animations are dropped entirely; the element
@@ -222,10 +257,12 @@
   [data-theme="cogni-os-v1"] .motion-modal-enter,
   [data-theme="cogni-os-v1"] .motion-modal-exit,
   [data-theme="cogni-os-v1"] .motion-toast-enter,
-  [data-theme="cogni-os-v1"] .motion-toast-exit {
+  [data-theme="cogni-os-v1"] .motion-toast-exit,
+  [data-theme="cogni-os-v1"] .motion-sigil-enter {
     animation: none;
     opacity: 1;
     transform: none;
+    filter: none;
     transition: opacity var(--duration-fast) var(--ease-standard);
   }
 }
