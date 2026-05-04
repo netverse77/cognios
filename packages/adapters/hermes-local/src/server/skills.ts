@@ -26,10 +26,24 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
-export function resolveHermesPaperclipSkillsRoot(config: Record<string, unknown>): string {
-  const configuredHome = asString(config.hermesHome);
-  const home = configuredHome ? path.resolve(configuredHome) : path.join(os.homedir(), ".hermes");
-  return path.join(home, "skills", HERMES_PAPERCLIP_NAMESPACE);
+// Three-tier hermesHome resolution mirroring the inbound importer's
+// resolveHermesHomeFromConfig (server/src/services/company-skills.ts). The
+// outbound writer and inbound reader MUST land on the same directory or a
+// synced skill never reaches Hermes' /skills listing. See COG-132 review.
+export function resolveHermesHomeFromAdapterConfig(
+  config: Record<string, unknown> | null | undefined,
+): string {
+  const configured = asString(config?.hermesHome);
+  if (configured) return path.resolve(configured);
+  const envHome = asString(process.env.HERMES_HOME);
+  if (envHome) return path.resolve(envHome);
+  return path.join(os.homedir(), ".hermes");
+}
+
+export function resolveHermesPaperclipSkillsRoot(
+  config: Record<string, unknown> | null | undefined,
+): string {
+  return path.join(resolveHermesHomeFromAdapterConfig(config), "skills", HERMES_PAPERCLIP_NAMESPACE);
 }
 
 function truncate(value: string, max: number): string {

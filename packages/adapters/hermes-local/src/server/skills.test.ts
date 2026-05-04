@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  resolveHermesHomeFromAdapterConfig,
   resolveHermesPaperclipSkillsRoot,
   syncHermesSkills,
 } from "./skills.js";
@@ -165,5 +166,64 @@ describe("syncHermesSkills", () => {
     expect(
       (await fs.stat(path.join(fixture.paperclipRoot, "managed"))).isDirectory(),
     ).toBe(true);
+  });
+});
+
+describe("resolveHermesHomeFromAdapterConfig", () => {
+  const ORIGINAL_HERMES_HOME = process.env.HERMES_HOME;
+  afterEach(() => {
+    if (ORIGINAL_HERMES_HOME === undefined) {
+      delete process.env.HERMES_HOME;
+    } else {
+      process.env.HERMES_HOME = ORIGINAL_HERMES_HOME;
+    }
+  });
+
+  it("honors process.env.HERMES_HOME when config.hermesHome is empty so outbound writes match the inbound importer's read path", async () => {
+    delete process.env.HERMES_HOME;
+    const fixture = await setup();
+    try {
+      const envHome = path.join(fixture.hermesHome, "from-env");
+      await fs.mkdir(envHome, { recursive: true });
+      process.env.HERMES_HOME = envHome;
+
+      // config.hermesHome intentionally absent — common dev/CI shape where
+      // the operator exports HERMES_HOME at the shell level.
+      expect(resolveHermesHomeFromAdapterConfig({})).toBe(path.resolve(envHome));
+      expect(resolveHermesPaperclipSkillsRoot({})).toBe(
+        path.join(path.resolve(envHome), "skills", "paperclip"),
+      );
+
+      const config = await fixture.configWith({
+        desiredSkills: ["paperclipai/paperclip/env-skill"],
+        runtimeSkills: [{ slug: "env-skill" }],
+      });
+      delete (config as Record<string, unknown>).hermesHome;
+
+      await syncHermesSkills(
+        { agentId: "a", companyId: "c", adapterType: "hermes_local", config },
+        [],
+      );
+
+      const written = await fs.readFile(
+        path.join(envHome, "skills", "paperclip", "env-skill", "SKILL.md"),
+        "utf8",
+      );
+      expect(written).toContain('name: "env-skill"');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("prefers config.hermesHome over process.env.HERMES_HOME when both are set", () => {
+    process.env.HERMES_HOME = "/from/env";
+    expect(resolveHermesHomeFromAdapterConfig({ hermesHome: "/from/config" })).toBe(
+      path.resolve("/from/config"),
+    );
+  });
+
+  it("falls back to ~/.hermes when neither config.hermesHome nor HERMES_HOME is set", () => {
+    delete process.env.HERMES_HOME;
+    expect(resolveHermesHomeFromAdapterConfig({})).toBe(path.join(os.homedir(), ".hermes"));
   });
 });

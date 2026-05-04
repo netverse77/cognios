@@ -18,5 +18,6 @@ export {
   listHermesSkills,
   syncHermesSkills,
   resolveHermesDesiredSkillNames,
+  resolveHermesHomeFromAdapterConfig,
   resolveHermesPaperclipSkillsRoot,
 } from "./skills.js";
