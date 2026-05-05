@@ -10,7 +10,10 @@
 // `memorySnippets` for `hermes_local` agents only (see
 // packages/adapters/hermes-local + the boot hook in app.ts).
 
-import type { MemorySnippet } from "@paperclipai/adapter-hermes-local/server";
+import type {
+  MemorySnippet,
+  UserModelSnapshot,
+} from "@paperclipai/adapter-hermes-local/server";
 
 /**
  * Optional fields a provider can contribute to the heartbeat-context
@@ -19,6 +22,7 @@ import type { MemorySnippet } from "@paperclipai/adapter-hermes-local/server";
  */
 export interface HeartbeatContextExtras {
   memorySnippets: MemorySnippet[];
+  userModel: UserModelSnapshot;
 }
 
 /** Minimal slice of the issue we hand each provider. */

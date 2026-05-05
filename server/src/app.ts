@@ -45,6 +45,7 @@ import { applyUiBranding } from "./ui-branding.js";
 import { agentService } from "./services/index.js";
 import { registerHeartbeatContextProvider } from "./services/heartbeat-context-providers.js";
 import { createHermesLocalMemoryBridge } from "./services/heartbeat-memory-bridge.js";
+import { createHermesLocalUserModelBridge } from "./services/heartbeat-honcho-bridge.js";
 import { getDefaultHermesProcessRegistry } from "@paperclipai/adapter-hermes-local/server";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -192,6 +193,24 @@ export async function createApp(
         return agent?.adapterType ?? null;
       },
       lookupHandle: (agentId) => getDefaultHermesProcessRegistry().get(agentId),
+    }),
+  );
+
+  // COG-116 H4: register the hermes_local user-model bridge so that
+  // heartbeat-context responses for hermes_local agents include a
+  // read-only `userModel` snapshot retrieved via Hermes'
+  // experimental/honchoUserModel. v1 mapping treats the agent's id as
+  // its peer/user identifier; the lookup is pluggable so a richer
+  // agent → user mapping can land later without touching the bridge.
+  // No Paperclip-side persistence — Hermes owns the snapshot shape.
+  registerHeartbeatContextProvider(
+    createHermesLocalUserModelBridge({
+      lookupAdapterType: async (agentId) => {
+        const agent = await agentService(db).getById(agentId);
+        return agent?.adapterType ?? null;
+      },
+      lookupHandle: (agentId) => getDefaultHermesProcessRegistry().get(agentId),
+      lookupUserId: async (agentId) => agentId,
     }),
   );
 
