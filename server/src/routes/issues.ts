@@ -78,6 +78,7 @@ import {
   normalizeIssueExecutionPolicy,
   parseIssueExecutionState,
 } from "../services/issue-execution-policy.js";
+import { runHeartbeatContextProviders } from "../services/heartbeat-context-providers.js";
 
 const MAX_ISSUE_COMMENT_LIMIT = 500;
 const updateIssueRouteSchema = updateIssueSchema.extend({
@@ -927,6 +928,7 @@ export function issueRoutes(
       attachments,
       continuationSummary,
       currentExecutionWorkspace,
+      recentCommentsForProviders,
     ] =
       await Promise.all([
         resolveIssueProjectAndGoal(issue),
@@ -937,7 +939,31 @@ export function issueRoutes(
         svc.listAttachments(issue.id),
         documentsSvc.getIssueDocumentByKey(issue.id, ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY),
         currentExecutionWorkspacePromise,
+        svc.listComments(issue.id, { order: "desc", limit: 2 }),
       ]);
+
+    const providerExtras = await runHeartbeatContextProviders(
+      {
+        issue: {
+          id: issue.id,
+          identifier: issue.identifier,
+          title: issue.title,
+          assigneeAgentId: issue.assigneeAgentId,
+        },
+        latestCommentId: commentCursor.latestCommentId,
+        recentCommentBodies: recentCommentsForProviders
+          .map((c) => (typeof c.body === "string" ? c.body : ""))
+          .filter((b) => b.length > 0),
+      },
+      {
+        onError: (_provider, err) => {
+          logger.warn(
+            { err, issueId: issue.id },
+            "heartbeat-context provider failed",
+          );
+        },
+      },
+    );
 
     res.json({
       issue: {
@@ -1004,6 +1030,7 @@ export function issueRoutes(
           }
         : null,
       currentExecutionWorkspace,
+      ...providerExtras,
     });
   });
 

@@ -87,6 +87,19 @@ export class HermesProcessRegistry {
     return handle;
   }
 
+  /**
+   * Read-only lookup. Returns the existing handle for `agentId`, or null
+   * when none has been spawned yet. Does NOT spawn a fresh process — used
+   * by side-channels (heartbeat-context memory bridge) that must not
+   * pay the cold-start cost.
+   */
+  get(agentId: string): HermesProcessHandle | null {
+    const existing = this.handles.get(agentId);
+    if (!existing) return null;
+    const stillRunning = existing.child.exitCode === null && !existing.child.killed;
+    return stillRunning ? existing : null;
+  }
+
   /** Force-remove the handle for an agent. Kills the child if still alive. */
   evict(agentId: string, reason: string): void {
     const handle = this.handles.get(agentId);

@@ -42,6 +42,10 @@ import { pluginRoutes } from "./routes/plugins.js";
 import { adapterRoutes } from "./routes/adapters.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { applyUiBranding } from "./ui-branding.js";
+import { agentService } from "./services/index.js";
+import { registerHeartbeatContextProvider } from "./services/heartbeat-context-providers.js";
+import { createHermesLocalMemoryBridge } from "./services/heartbeat-memory-bridge.js";
+import { getDefaultHermesProcessRegistry } from "@paperclipai/adapter-hermes-local/server";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
 import { createPluginWorkerManager, type PluginWorkerManager } from "./services/plugin-worker-manager.js";
@@ -174,6 +178,22 @@ export async function createApp(
 
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = opts.pluginWorkerManager ?? createPluginWorkerManager();
+
+  // COG-116 H3b: register the hermes_local memory bridge so that
+  // heartbeat-context responses for hermes_local agents include
+  // `memorySnippets` retrieved via Hermes' experimental/factSearch.
+  // The bridge gracefully no-ops for any other adapter type or when
+  // the long-lived ACP process has not yet been spawned for the
+  // assigned agent.
+  registerHeartbeatContextProvider(
+    createHermesLocalMemoryBridge({
+      lookupAdapterType: async (agentId) => {
+        const agent = await agentService(db).getById(agentId);
+        return agent?.adapterType ?? null;
+      },
+      lookupHandle: (agentId) => getDefaultHermesProcessRegistry().get(agentId),
+    }),
+  );
 
   // Mount API routes
   const api = Router();
