@@ -362,18 +362,24 @@ async function assertHeartbeatMemoryBridge(
   // smoke needs to prove is that the memorySnippets payload field literally
   // carries the seeded fact when `searchFacts` is called against a live
   // ACP connection — which is exactly what this step does.
-  // Issue title + comment fed into the bridge's query builder. Same
-  // FTS5-safe constraint applies: avoid `-` at the start of any token.
-  // The seeded marker token is included in the comment so the query
-  // resolves to a hit on the seeded fact.
+  // Issue title + comment fed into the bridge's query builder. Two
+  // FTS5 constraints apply:
+  //   * Avoid `-` at the start of any token — SQLite FTS5 treats it as
+  //     the NOT operator and the MATCH expression fails to parse.
+  //   * Spaces are implicit AND in FTS5 MATCH, so every token in the
+  //     query must appear in the indexed fact content (or tags). We
+  //     therefore restrict the title + comment to a subset of the
+  //     words used in `SEED_FACT_CONTENT`, plus the unique
+  //     `SEED_FACT_MARKER` token, so the bridge query resolves to a
+  //     hit on the seeded fact deterministically.
   const issue = {
     id: "issue-bridge-smoke",
     identifier: "COG-137",
-    title: `bridge smoke driver query for ${SEED_FACT_MARKER}`,
+    title: `bridge smoke marker ${SEED_FACT_MARKER}`,
     assigneeAgentId: agentId,
   };
   const recentCommentBodies = [
-    `bridge smoke driver asks Hermes for memory snippets matching ${SEED_FACT_MARKER}`,
+    `${SEED_FACT_MARKER} synced via Paperclip`,
   ];
   // Same query construction the production bridge uses (title + comments,
   // joined with blank lines, capped at 512 chars by default).
