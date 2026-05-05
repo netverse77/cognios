@@ -103,6 +103,15 @@ export async function createAcpClient(
   const child = handle.child;
   const connection = await connectClientSide(child, ctx);
 
+  // Cache the live SDK connection on the handle so the heartbeat-context
+  // memory bridge (`searchFacts` in `./memory.ts`) can issue
+  // `experimental/factSearch` against the same long-lived child without
+  // spawning a second Python process. The base ClientSideConnection exposes
+  // `extMethod` directly (acp.d.ts:365); the cast narrows it to the
+  // AcpExtMethodConnection slice the bridge depends on. Closes the
+  // COG-135 H3b wiring gap surfaced by the COG-137 bridge smoke.
+  handle.acpConnection = connection as unknown as HermesProcessHandle["acpConnection"];
+
   const client: AcpClient = {
     async initialize() {
       const result = await connection.initialize({

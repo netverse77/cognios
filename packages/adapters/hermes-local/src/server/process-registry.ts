@@ -9,6 +9,8 @@ import {
   sanitizeInheritedPaperclipEnv,
 } from "@paperclipai/adapter-utils/server-utils";
 
+import type { AcpExtMethodConnection } from "./memory.js";
+
 export interface HermesProcessSpec {
   agentId: string;
   companyId: string;
@@ -39,6 +41,14 @@ export interface HermesProcessHandle {
   initialized: boolean;
   /** Last heartbeat that touched this process; used by future eviction. */
   lastUsedAt: number;
+  /**
+   * Live SDK connection cached by `createAcpClient` so side-channels
+   * (heartbeat-context memory bridge, COG-116 H3) can issue
+   * `experimental/factSearch` against the same long-lived child without
+   * spawning a second process. `null` until the first execute() (or smoke)
+   * has wrapped the child in a ClientSideConnection.
+   */
+  acpConnection: AcpExtMethodConnection | null;
 }
 
 /** Public read-only view returned by lookup helpers. */
@@ -157,6 +167,7 @@ export class HermesProcessRegistry {
       sessionId: null,
       initialized: false,
       lastUsedAt: Date.now(),
+      acpConnection: null,
     };
   }
 }

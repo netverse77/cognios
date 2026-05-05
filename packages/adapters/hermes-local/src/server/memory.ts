@@ -34,14 +34,14 @@ export interface AcpExtMethodConnection {
 }
 
 /**
- * Optional connection accessor cached on the process handle by the in-tree
- * adapter's execute() path. Heartbeat-context fires before execute() does,
- * so the very first request for an agent will see no connection — the
- * caller MUST treat an empty result as "no memory yet" and not as an error.
+ * Historical alias preserved for callers that imported the `WithConnection`
+ * shape before the connection field moved onto the base handle type
+ * (COG-137). The base `HermesProcessHandle.acpConnection` is `null` until
+ * `createAcpClient` wraps the child in a live SDK connection — heartbeat-
+ * context fires before execute() does, so callers MUST still treat an empty
+ * result as "no memory yet" and not as an error.
  */
-export interface HermesProcessHandleWithConnection extends HermesProcessHandle {
-  acpConnection?: AcpExtMethodConnection | null;
-}
+export type HermesProcessHandleWithConnection = HermesProcessHandle;
 
 const MAX_QUERY_CHARS = 4096;
 const MIN_TOPK = 1;
