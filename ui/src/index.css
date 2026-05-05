@@ -87,7 +87,9 @@
   --brand: oklch(0.52 0.115 198);
   --brand-foreground: oklch(0.985 0.005 200);
   --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
+  /* COG-141: foreground was identical to bg (1.00:1, invisible). White token
+     gives 4.56:1 — AA-pass for normal text on the solid destructive surface. */
+  --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.91 0.01 220);
   --input: oklch(0.91 0.01 220);
   --ring: oklch(0.62 0.1 198);
@@ -123,7 +125,10 @@
   --accent-foreground: oklch(0.97 0.006 215);
   --brand: oklch(0.78 0.14 195);
   --brand-foreground: oklch(0.18 0.025 230);
-  --destructive: oklch(0.637 0.237 25.331);
+  /* COG-141: prior bg oklch(0.637 0.237 25.331) gave 3.66:1 with white fg —
+     AA-fail for normal text. Deeper red restores shadcn convention of a
+     darker dark-mode destructive and lifts the token pair to 6.15:1. */
+  --destructive: oklch(0.505 0.213 27.5);
   --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.28 0.025 230);
   --input: oklch(0.28 0.025 230);
