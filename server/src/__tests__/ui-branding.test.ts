@@ -4,6 +4,7 @@ import {
   getWorktreeUiBranding,
   isWorktreeUiBrandingEnabled,
   renderFaviconLinks,
+  renderManifestLink,
   renderRuntimeBrandingMeta,
 } from "../ui-branding.js";
 
@@ -17,6 +18,9 @@ const TEMPLATE = `<!doctype html>
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <!-- PAPERCLIP_FAVICON_END -->
+    <!-- PAPERCLIP_MANIFEST_START -->
+    <link rel="manifest" href="/site.webmanifest" />
+    <!-- PAPERCLIP_MANIFEST_END -->
 </head>`;
 
 describe("ui branding", () => {
@@ -114,5 +118,35 @@ describe("ui branding", () => {
     // Both theme + worktree meta coexist.
     expect(branded).toContain('name="paperclip-worktree-name"');
     expect(branded).toContain('name="paperclip-theme"');
+  });
+
+  it("serves the legacy site.webmanifest by default (COG-162)", () => {
+    expect(renderManifestLink({})).toBe('<link rel="manifest" href="/site.webmanifest" />');
+    const branded = applyUiBranding(TEMPLATE, {});
+    expect(branded).toContain('href="/site.webmanifest"');
+    expect(branded).not.toContain("site-cogni-os-v1.webmanifest");
+  });
+
+  it("flips the manifest to the v1 variant under THEME_COGNI_OS=1 (COG-162)", () => {
+    expect(renderManifestLink({ THEME_COGNI_OS: "1" })).toBe(
+      '<link rel="manifest" href="/site-cogni-os-v1.webmanifest" />',
+    );
+    const branded = applyUiBranding(TEMPLATE, { THEME_COGNI_OS: "1" });
+    expect(branded).toContain('href="/site-cogni-os-v1.webmanifest"');
+    // Legacy manifest must be replaced, not augmented.
+    expect(branded).not.toContain('href="/site.webmanifest"');
+  });
+
+  it("manifest variant flips even when worktree branding overrides the favicon (COG-162)", () => {
+    // Worktree branding wins on favicon but the manifest is independent of
+    // worktree mode — Cogni OS surfaces still need the v1 PWA identity.
+    const branded = applyUiBranding(TEMPLATE, {
+      PAPERCLIP_IN_WORKTREE: "true",
+      PAPERCLIP_WORKTREE_NAME: "paperclip-pr-432",
+      PAPERCLIP_WORKTREE_COLOR: "#4f86f7",
+      THEME_COGNI_OS: "1",
+    });
+    expect(branded).toContain('href="/site-cogni-os-v1.webmanifest"');
+    expect(branded).not.toContain('href="/site.webmanifest"');
   });
 });

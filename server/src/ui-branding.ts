@@ -2,6 +2,16 @@ const FAVICON_BLOCK_START = "<!-- PAPERCLIP_FAVICON_START -->";
 const FAVICON_BLOCK_END = "<!-- PAPERCLIP_FAVICON_END -->";
 const RUNTIME_BRANDING_BLOCK_START = "<!-- PAPERCLIP_RUNTIME_BRANDING_START -->";
 const RUNTIME_BRANDING_BLOCK_END = "<!-- PAPERCLIP_RUNTIME_BRANDING_END -->";
+const MANIFEST_BLOCK_START = "<!-- PAPERCLIP_MANIFEST_START -->";
+const MANIFEST_BLOCK_END = "<!-- PAPERCLIP_MANIFEST_END -->";
+
+const DEFAULT_MANIFEST_LINK = '<link rel="manifest" href="/site.webmanifest" />';
+
+// COG-162 follow-up to COG-117/COG-145. Static manifest variant served when
+// THEME_COGNI_OS=1 so PWA-installed users on the Cogni OS surface see the
+// Cogni OS name + v1 glyph instead of the legacy Paperclip branding. Mirrors
+// the COGNI_OS_V1_FAVICON_LINKS pattern: no new request path, edge-cacheable.
+const COGNI_OS_V1_MANIFEST_LINK = '<link rel="manifest" href="/site-cogni-os-v1.webmanifest" />';
 
 const DEFAULT_FAVICON_LINKS = [
   '<link rel="icon" href="/favicon.ico" sizes="48x48" />',
@@ -235,6 +245,13 @@ export function renderRuntimeBrandingMeta(
   return lines.join("\n");
 }
 
+export function renderManifestLink(env: NodeJS.ProcessEnv = process.env): string {
+  if (isCogniOsBrandThemeEnabled(env)) {
+    return COGNI_OS_V1_MANIFEST_LINK;
+  }
+  return DEFAULT_MANIFEST_LINK;
+}
+
 function replaceMarkedBlock(html: string, startMarker: string, endMarker: string, content: string): string {
   const start = html.indexOf(startMarker);
   const end = html.indexOf(endMarker);
@@ -259,10 +276,16 @@ export function applyUiBranding(html: string, env: NodeJS.ProcessEnv = process.e
     FAVICON_BLOCK_END,
     renderFaviconLinks(branding, env),
   );
-  return replaceMarkedBlock(
+  const withRuntimeMeta = replaceMarkedBlock(
     withFavicon,
     RUNTIME_BRANDING_BLOCK_START,
     RUNTIME_BRANDING_BLOCK_END,
     renderRuntimeBrandingMeta(branding, env),
+  );
+  return replaceMarkedBlock(
+    withRuntimeMeta,
+    MANIFEST_BLOCK_START,
+    MANIFEST_BLOCK_END,
+    renderManifestLink(env),
   );
 }
