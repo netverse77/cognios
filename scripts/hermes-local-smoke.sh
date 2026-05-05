@@ -6,17 +6,25 @@
 # the adapter's process registry spawned a real child, the JSON-RPC framing
 # round-trips, and exitCode is 0 (success).
 #
-# Three modes (the smoke driver picks one based on flags / env):
-#   1. --initialize-only (HERMES_SMOKE_INITIALIZE_ONLY=1) — the CI default.
-#      Runs `initialize` only and asserts a numeric protocolVersion came
-#      back. Provider-independent: works without an LLM provider configured
-#      on the Hermes side. This is what GitHub Actions runs, since CI has
-#      no provider creds. (COG-128.)
-#   2. --skip-prompt (HERMES_SMOKE_SKIP_PROMPT=1) — initialize + newSession.
+# Four modes (the smoke driver picks one based on flags / env):
+#   1. --bridge (HERMES_SMOKE_BRIDGE=1) — COG-137 / COG-116 bridge integration.
+#      Seeds a fact in Hermes' MemoryStore, syncs a synthetic Paperclip
+#      skill into ${HERMES_HOME}/skills/paperclip/, then drives
+#      experimental/factSearch + the heartbeat-memory-bridge round-trip
+#      against a live ACP child. Provider-independent (never calls
+#      session/new), but strictly more thorough than --initialize-only —
+#      proves both COG-116 acceptance criteria literally pass. CI default
+#      when ADAPTER_HERMES_LOCAL=1.
+#   2. --initialize-only (HERMES_SMOKE_INITIALIZE_ONLY=1) — wire-format-only
+#      mode. Runs `initialize` only and asserts a numeric protocolVersion
+#      came back. Provider-independent. Preserved for provider-less envs
+#      that cannot pip-install the holographic-memory deps the bridge mode
+#      needs. (COG-128.)
+#   3. --skip-prompt (HERMES_SMOKE_SKIP_PROMPT=1) — initialize + newSession.
 #      Provider-equipped envs (local dev with HERMES_HOME/.env, or a CI
 #      job with a secret-injected provider key) that want to validate the
 #      session-construction path without driving a full prompt turn.
-#   3. (default, no flag) — initialize + newSession + prompt. Full bounded
+#   4. (default, no flag) — initialize + newSession + prompt. Full bounded
 #      turn. Requires a configured LLM provider. Used when validating the
 #      end-to-end ACP contract locally (COG-115 §7 acceptance row 3).
 #
@@ -26,9 +34,11 @@
 #   2. Python is available on $PATH (3.10+) AND `acp_adapter.entry` is
 #      importable (i.e. the operator's Hermes checkout is set up — set
 #      HERMES_REPO_PATH to point at it).
-#   3. For mode (2) / (3): whatever LLM provider Hermes is configured
+#   3. For mode (1) the holographic-memory deps (`pip install -e ".[acp]"`
+#      brings them in via the [memory] extra). Mode (2) does not need this.
+#   4. For mode (3) / (4): whatever LLM provider Hermes is configured
 #      against has live credentials (Nous Portal / OpenRouter / OpenAI /
-#      etc., per acp_adapter/auth.py). Mode (1) does not need this.
+#      etc., per acp_adapter/auth.py). Modes (1) and (2) do not need this.
 #
 # This is the source of truth for the COG-115 §7 acceptance check
 # "One real Paperclip heartbeat completes E2E and updates an issue." The
@@ -45,6 +55,7 @@ set -euo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 ADAPTER_DIR="${REPO_ROOT}/packages/adapters/hermes-local"
 SMOKE_TS="${ADAPTER_DIR}/src/cli/smoke.ts"
+BRIDGE_SMOKE_TS="${ADAPTER_DIR}/src/cli/bridge-smoke.ts"
 
 log() {
   printf '[hermes-local-smoke] %s\n' "$*" >&2
@@ -57,7 +68,32 @@ die() {
 
 # ---- 1. Preconditions ------------------------------------------------------
 
-if [[ ! -f "${SMOKE_TS}" ]]; then
+# Resolve the requested mode as early as possible — bridge mode targets a
+# different TS driver, but every mode requires the same Python / pnpm /
+# tsx preconditions, so the rest of the script is shared.
+SMOKE_MODE="default"
+for arg in "$@"; do
+  case "$arg" in
+    --bridge) SMOKE_MODE="bridge" ;;
+    --initialize-only) SMOKE_MODE="initialize-only" ;;
+    --skip-prompt) SMOKE_MODE="skip-prompt" ;;
+  esac
+done
+if [[ "${SMOKE_MODE}" == "default" ]]; then
+  if [[ "${HERMES_SMOKE_BRIDGE:-}" == "1" ]]; then
+    SMOKE_MODE="bridge"
+  elif [[ "${HERMES_SMOKE_INITIALIZE_ONLY:-}" == "1" ]]; then
+    SMOKE_MODE="initialize-only"
+  elif [[ "${HERMES_SMOKE_SKIP_PROMPT:-}" == "1" ]]; then
+    SMOKE_MODE="skip-prompt"
+  fi
+fi
+
+if [[ "${SMOKE_MODE}" == "bridge" ]]; then
+  if [[ ! -f "${BRIDGE_SMOKE_TS}" ]]; then
+    die "Cannot find ${BRIDGE_SMOKE_TS}. Run from a COG-137-aware checkout."
+  fi
+elif [[ ! -f "${SMOKE_TS}" ]]; then
   die "Cannot find ${SMOKE_TS}. Run from a hermes-local-aware checkout."
 fi
 
@@ -110,36 +146,53 @@ log "Hermes home: ${HERMES_HOME:-<default>}"
 
 cd "${REPO_ROOT}"
 
-# Mode selection. The smoke driver also reads these env vars directly, so
-# either the env var or the explicit flag works; we forward the flag here
-# so the spawn line in CI logs is self-describing.
-#   HERMES_SMOKE_INITIALIZE_ONLY=1  -> --initialize-only (CI default; no provider needed)
-#   HERMES_SMOKE_SKIP_PROMPT=1      -> --skip-prompt     (initialize + newSession; needs provider)
-#   neither                         -> full bounded turn (initialize + newSession + prompt; needs provider)
-# If both env vars are set, --initialize-only wins (it is a strict subset);
-# this matches the precedence in the smoke driver itself.
-MODE_FLAG=()
-if [[ "${HERMES_SMOKE_INITIALIZE_ONLY:-}" == "1" ]]; then
-  MODE_FLAG=( --initialize-only )
-  log "initialize-only mode: initialize handshake only (CI default — no LLM provider required)"
-elif [[ "${HERMES_SMOKE_SKIP_PROMPT:-}" == "1" ]]; then
-  MODE_FLAG=( --skip-prompt )
-  log "skip-prompt mode: initialize + newSession only (provider-equipped envs)"
-else
-  log "full-turn mode: initialize + newSession + prompt (provider-equipped envs)"
-fi
-
-set +e
-"${TSX_BIN}" "${SMOKE_TS}" \
-  --command "${HERMES_ACP_COMMAND}" \
-  --hermes-repo "${HERMES_REPO_PATH}" \
-  ${HERMES_HOME:+--hermes-home "${HERMES_HOME}"} \
-  ${HERMES_MODEL:+--model "${HERMES_MODEL}"} \
-  ${HERMES_PROMPT:+--message "${HERMES_PROMPT}"} \
-  --timeout-sec "${HERMES_SMOKE_TIMEOUT_SEC:-60}" \
-  "${MODE_FLAG[@]}"
-status=$?
-set -e
+# Mode dispatch. SMOKE_MODE is set above from flags / env vars. Each mode
+# targets a distinct driver / flag set; the bridge driver lives in its
+# own file (bridge-smoke.ts) because its preconditions and assertions
+# don't share much with the wire-format smoke (smoke.ts).
+case "${SMOKE_MODE}" in
+  bridge)
+    log "bridge mode: skill sync + experimental/factSearch + heartbeat-memory-bridge round-trip (COG-137)"
+    set +e
+    "${TSX_BIN}" "${BRIDGE_SMOKE_TS}" \
+      --command "${HERMES_ACP_COMMAND}" \
+      --hermes-repo "${HERMES_REPO_PATH}" \
+      ${HERMES_HOME:+--hermes-home "${HERMES_HOME}"} \
+      --timeout-sec "${HERMES_SMOKE_TIMEOUT_SEC:-120}"
+    status=$?
+    set -e
+    ;;
+  initialize-only|skip-prompt|default)
+    case "${SMOKE_MODE}" in
+      initialize-only)
+        MODE_FLAG=( --initialize-only )
+        log "initialize-only mode: initialize handshake only (no LLM provider required)"
+        ;;
+      skip-prompt)
+        MODE_FLAG=( --skip-prompt )
+        log "skip-prompt mode: initialize + newSession only (provider-equipped envs)"
+        ;;
+      default)
+        MODE_FLAG=()
+        log "full-turn mode: initialize + newSession + prompt (provider-equipped envs)"
+        ;;
+    esac
+    set +e
+    "${TSX_BIN}" "${SMOKE_TS}" \
+      --command "${HERMES_ACP_COMMAND}" \
+      --hermes-repo "${HERMES_REPO_PATH}" \
+      ${HERMES_HOME:+--hermes-home "${HERMES_HOME}"} \
+      ${HERMES_MODEL:+--model "${HERMES_MODEL}"} \
+      ${HERMES_PROMPT:+--message "${HERMES_PROMPT}"} \
+      --timeout-sec "${HERMES_SMOKE_TIMEOUT_SEC:-60}" \
+      "${MODE_FLAG[@]}"
+    status=$?
+    set -e
+    ;;
+  *)
+    die "Unknown smoke mode: ${SMOKE_MODE}"
+    ;;
+esac
 
 if [[ ${status} -eq 0 ]]; then
   log "PASS"
