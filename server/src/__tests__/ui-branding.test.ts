@@ -91,6 +91,16 @@ describe("ui branding", () => {
     expect(branded).not.toContain('name="paperclip-worktree-name"');
   });
 
+  it("references the v1 PNG fallbacks (not the legacy paperclip PNGs) under THEME_COGNI_OS=1 (COG-145)", () => {
+    const branded = applyUiBranding(TEMPLATE, { THEME_COGNI_OS: "1" });
+    expect(branded).toContain('href="/favicon-cogni-os-v1-32x32.png"');
+    expect(branded).toContain('href="/favicon-cogni-os-v1-16x16.png"');
+    expect(branded).toContain('href="/apple-touch-icon-cogni-os-v1.png"');
+    // Legacy paperclip-glyph PNGs must NOT leak into brand mode.
+    expect(branded).not.toContain('href="/favicon-32x32.png"');
+    expect(branded).not.toContain('href="/favicon-16x16.png"');
+  });
+
   it("worktree favicon takes precedence over brand favicon when both are set", () => {
     const branded = applyUiBranding(TEMPLATE, {
       PAPERCLIP_IN_WORKTREE: "true",

@@ -13,11 +13,13 @@ const DEFAULT_FAVICON_LINKS = [
 // COG-117 / COG-124 Pixel v1 brand layer favicon. Only emitted when
 // THEME_COGNI_OS=1 is set in the deployment env (i.e. the Cogni OS / AgenticOS
 // packaging surface). Worktree branding takes precedence so dynamic worktree
-// favicons still win over the static brand favicon.
+// favicons still win over the static brand favicon. PNG fallbacks (COG-145)
+// are rasterized from favicon-cogni-os-v1.svg via scripts/render-cogni-os-v1-favicons.mjs.
 const COGNI_OS_V1_FAVICON_LINKS = [
   '<link rel="icon" href="/favicon-cogni-os-v1.svg" type="image/svg+xml" sizes="any" />',
-  '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />',
-  '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />',
+  '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-cogni-os-v1-32x32.png" />',
+  '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-cogni-os-v1-16x16.png" />',
+  '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-cogni-os-v1.png" />',
 ].join("\n");
 
 const COGNI_OS_V1_THEME_TOKEN = "cogni-os-v1";
