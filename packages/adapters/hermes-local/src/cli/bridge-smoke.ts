@@ -49,9 +49,15 @@ interface CliArgs {
   timeoutSec: number;
 }
 
-const SEED_FACT_CONTENT =
-  "cog-137 bridge-smoke fact — synced via experimental/factSearch from Paperclip";
-const SEED_FACT_TAGS = "cog-137 bridge-smoke paperclip";
+// Marker phrase the smoke seeds into Hermes' MemoryStore and then queries
+// for via experimental/factSearch. **Must be FTS5-safe**: SQLite FTS5
+// treats `-` as a NOT operator at the start of a token, so any hyphenated
+// identifier like `cog-137-bridge-smoke` causes the MATCH expression to
+// fail to parse and the retriever falls back to `[]`. Use unhyphenated
+// alphanumeric tokens that are unlikely to appear in any other fact.
+const SEED_FACT_MARKER = "novacog137bridgesmoketoken";
+const SEED_FACT_CONTENT = `Bridge smoke marker fact ${SEED_FACT_MARKER} synced via experimental factSearch from Paperclip`;
+const SEED_FACT_TAGS = "paperclip bridge smoke";
 const SKILL_SLUG = "cog-137-bridge-smoke";
 const SKILL_DESCRIPTION =
   "Bridge smoke marker skill — proves outbound Paperclip→Hermes skills sync.";
@@ -317,13 +323,19 @@ async function assertFactSearchRoundtrip(
   handle: HermesProcessHandle,
 ): Promise<void> {
   log("step 2: experimental/factSearch (live ACP)");
-  const snippets = await searchFacts(handle, "cog-137 bridge-smoke", 3);
+  // Query uses the unhyphenated SEED_FACT_MARKER plus a couple of common
+  // tokens from the seeded content. FTS5 treats leading `-` on a token
+  // as NOT, so anything like `cog-137` would fail to parse and the
+  // retriever would silently return [] — which is the failure mode the
+  // first CI run hit (see commit history).
+  const query = `${SEED_FACT_MARKER} bridge smoke`;
+  const snippets = await searchFacts(handle, query, 3);
   if (snippets.length === 0) {
     throw new Error(
-      "experimental/factSearch returned 0 snippets — seeded fact missing or connection unwired",
+      `experimental/factSearch returned 0 snippets for query="${query}" — seeded fact missing or connection unwired`,
     );
   }
-  const matched = snippets.find((s) => s.content.includes("cog-137 bridge-smoke fact"));
+  const matched = snippets.find((s) => s.content.includes(SEED_FACT_MARKER));
   if (!matched) {
     throw new Error(
       `experimental/factSearch returned ${snippets.length} snippet(s) but none contained the seeded marker; got:\n${JSON.stringify(snippets, null, 2)}`,
@@ -350,14 +362,18 @@ async function assertHeartbeatMemoryBridge(
   // smoke needs to prove is that the memorySnippets payload field literally
   // carries the seeded fact when `searchFacts` is called against a live
   // ACP connection — which is exactly what this step does.
+  // Issue title + comment fed into the bridge's query builder. Same
+  // FTS5-safe constraint applies: avoid `-` at the start of any token.
+  // The seeded marker token is included in the comment so the query
+  // resolves to a hit on the seeded fact.
   const issue = {
     id: "issue-bridge-smoke",
     identifier: "COG-137",
-    title: "cog-137 bridge-smoke",
+    title: `bridge smoke driver query for ${SEED_FACT_MARKER}`,
     assigneeAgentId: agentId,
   };
   const recentCommentBodies = [
-    "bridge-smoke driver asks Hermes for memory snippets",
+    `bridge smoke driver asks Hermes for memory snippets matching ${SEED_FACT_MARKER}`,
   ];
   // Same query construction the production bridge uses (title + comments,
   // joined with blank lines, capped at 512 chars by default).
@@ -370,7 +386,7 @@ async function assertHeartbeatMemoryBridge(
     );
   }
   const matched = payload.memorySnippets.find((s) =>
-    s.content.includes("cog-137 bridge-smoke fact"),
+    s.content.includes(SEED_FACT_MARKER),
   );
   if (!matched) {
     throw new Error(
