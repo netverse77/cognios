@@ -9,6 +9,59 @@ import { logger } from "../middleware/logger.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import { serverVersion } from "../version.js";
 
+export type HermesHealthStatus = "ok" | "degraded" | "offline" | "idle";
+
+export interface HermesHealthSnapshotInput {
+  total: number;
+  alive: number;
+  initialized: number;
+  lastActivityAt: number | null;
+}
+
+export type HermesHealthProbe = () => HermesHealthSnapshotInput | null;
+
+interface HermesHealthSummary {
+  status: HermesHealthStatus;
+  total: number;
+  alive: number;
+  initialized: number;
+  lastActivityAt: string | null;
+}
+
+function summariseHermesHealth(probe: HermesHealthProbe | undefined): HermesHealthSummary {
+  if (!probe) {
+    return { status: "offline", total: 0, alive: 0, initialized: 0, lastActivityAt: null };
+  }
+  let raw: HermesHealthSnapshotInput | null;
+  try {
+    raw = probe();
+  } catch (err) {
+    logger.warn({ err }, "Hermes health probe threw");
+    return { status: "degraded", total: 0, alive: 0, initialized: 0, lastActivityAt: null };
+  }
+  if (!raw) {
+    return { status: "offline", total: 0, alive: 0, initialized: 0, lastActivityAt: null };
+  }
+  const { total, alive, initialized, lastActivityAt } = raw;
+  const lastIso = lastActivityAt && lastActivityAt > 0
+    ? new Date(lastActivityAt).toISOString()
+    : null;
+  let status: HermesHealthStatus;
+  if (total === 0) {
+    // Registry is reachable but no agent has spawned a hermes child yet —
+    // surface as `idle` so the UI pill can stay green without lying about
+    // active processes.
+    status = "idle";
+  } else if (alive === total && initialized === total) {
+    status = "ok";
+  } else if (alive > 0) {
+    status = "degraded";
+  } else {
+    status = "offline";
+  }
+  return { status, total, alive, initialized, lastActivityAt: lastIso };
+}
+
 function shouldExposeFullHealthDetails(
   actorType: "none" | "board" | "agent" | null | undefined,
   deploymentMode: DeploymentMode,
@@ -35,6 +88,8 @@ export function healthRoutes(
     deploymentExposure: DeploymentExposure;
     authReady: boolean;
     companyDeletionEnabled: boolean;
+    statusBarHealthEnabled?: boolean;
+    hermesHealthProbe?: HermesHealthProbe;
   } = {
     deploymentMode: "local_trusted",
     deploymentExposure: "private",
@@ -69,7 +124,7 @@ export function healthRoutes(
       res.status(503).json({
         status: "unhealthy",
         version: serverVersion,
-        error: "database_unreachable"
+        error: "database_unreachable",
       });
       return;
     }
@@ -119,7 +174,14 @@ export function healthRoutes(
       });
     }
 
+    const statusBarHealthEnabled = opts.statusBarHealthEnabled ?? false;
+    const hermes = statusBarHealthEnabled
+      ? summariseHermesHealth(opts.hermesHealthProbe)
+      : undefined;
+
     if (!exposeFullDetails) {
+      // Operator-only signals (hermes summary, statusBarHealth flag) are
+      // intentionally omitted for anonymous callers in authenticated mode.
       res.json({
         status: "ok",
         deploymentMode: opts.deploymentMode,
@@ -140,8 +202,10 @@ export function healthRoutes(
       bootstrapInviteActive,
       features: {
         companyDeletionEnabled: opts.companyDeletionEnabled,
+        statusBarHealthEnabled,
       },
       ...(devServer ? { devServer } : {}),
+      ...(hermes ? { hermes } : {}),
     });
   });
 

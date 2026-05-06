@@ -136,6 +136,196 @@ describe("GET /health", () => {
     });
   });
 
+  it("omits hermes summary and statusBarHealth flag when feature flag is off", async () => {
+    const db = {
+      execute: vi.fn().mockResolvedValue([{ "?column?": 1 }]),
+    } as unknown as Db;
+    const probe = vi.fn().mockReturnValue({
+      total: 2,
+      alive: 2,
+      initialized: 2,
+      lastActivityAt: 1_700_000_000_000,
+    });
+    const app = express();
+    app.use(
+      "/health",
+      healthRoutes(db, {
+        deploymentMode: "local_trusted",
+        deploymentExposure: "private",
+        authReady: true,
+        companyDeletionEnabled: true,
+        statusBarHealthEnabled: false,
+        hermesHealthProbe: probe,
+      }),
+    );
+
+    const res = await request(app).get("/health");
+
+    expect(res.status).toBe(200);
+    expect(res.body.hermes).toBeUndefined();
+    expect(res.body.features).toMatchObject({ statusBarHealthEnabled: false });
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  it("reports hermes ok when all tracked processes are alive and initialized", async () => {
+    const db = {
+      execute: vi.fn().mockResolvedValue([{ "?column?": 1 }]),
+    } as unknown as Db;
+    const probe = vi.fn().mockReturnValue({
+      total: 2,
+      alive: 2,
+      initialized: 2,
+      lastActivityAt: 1_700_000_000_000,
+    });
+    const app = express();
+    app.use(
+      "/health",
+      healthRoutes(db, {
+        deploymentMode: "local_trusted",
+        deploymentExposure: "private",
+        authReady: true,
+        companyDeletionEnabled: true,
+        statusBarHealthEnabled: true,
+        hermesHealthProbe: probe,
+      }),
+    );
+
+    const res = await request(app).get("/health");
+
+    expect(res.status).toBe(200);
+    expect(res.body.hermes).toEqual({
+      status: "ok",
+      total: 2,
+      alive: 2,
+      initialized: 2,
+      lastActivityAt: new Date(1_700_000_000_000).toISOString(),
+    });
+    expect(res.body.features).toMatchObject({ statusBarHealthEnabled: true });
+  });
+
+  it("reports hermes degraded when some processes are dead", async () => {
+    const db = {
+      execute: vi.fn().mockResolvedValue([{ "?column?": 1 }]),
+    } as unknown as Db;
+    const app = express();
+    app.use(
+      "/health",
+      healthRoutes(db, {
+        deploymentMode: "local_trusted",
+        deploymentExposure: "private",
+        authReady: true,
+        companyDeletionEnabled: true,
+        statusBarHealthEnabled: true,
+        hermesHealthProbe: () => ({ total: 2, alive: 1, initialized: 1, lastActivityAt: null }),
+      }),
+    );
+
+    const res = await request(app).get("/health");
+
+    expect(res.body.hermes.status).toBe("degraded");
+  });
+
+  it("reports hermes offline when every tracked process has died", async () => {
+    const db = {
+      execute: vi.fn().mockResolvedValue([{ "?column?": 1 }]),
+    } as unknown as Db;
+    const app = express();
+    app.use(
+      "/health",
+      healthRoutes(db, {
+        deploymentMode: "local_trusted",
+        deploymentExposure: "private",
+        authReady: true,
+        companyDeletionEnabled: true,
+        statusBarHealthEnabled: true,
+        hermesHealthProbe: () => ({ total: 1, alive: 0, initialized: 0, lastActivityAt: null }),
+      }),
+    );
+
+    const res = await request(app).get("/health");
+
+    expect(res.body.hermes.status).toBe("offline");
+  });
+
+  it("reports hermes idle when registry is reachable but empty", async () => {
+    const db = {
+      execute: vi.fn().mockResolvedValue([{ "?column?": 1 }]),
+    } as unknown as Db;
+    const app = express();
+    app.use(
+      "/health",
+      healthRoutes(db, {
+        deploymentMode: "local_trusted",
+        deploymentExposure: "private",
+        authReady: true,
+        companyDeletionEnabled: true,
+        statusBarHealthEnabled: true,
+        hermesHealthProbe: () => ({ total: 0, alive: 0, initialized: 0, lastActivityAt: null }),
+      }),
+    );
+
+    const res = await request(app).get("/health");
+
+    expect(res.body.hermes.status).toBe("idle");
+  });
+
+  it("reports hermes degraded when probe throws", async () => {
+    const db = {
+      execute: vi.fn().mockResolvedValue([{ "?column?": 1 }]),
+    } as unknown as Db;
+    const app = express();
+    app.use(
+      "/health",
+      healthRoutes(db, {
+        deploymentMode: "local_trusted",
+        deploymentExposure: "private",
+        authReady: true,
+        companyDeletionEnabled: true,
+        statusBarHealthEnabled: true,
+        hermesHealthProbe: () => {
+          throw new Error("registry exploded");
+        },
+      }),
+    );
+
+    const res = await request(app).get("/health");
+
+    expect(res.body.hermes.status).toBe("degraded");
+  });
+
+  it("redacts hermes and statusBarHealth flag from anonymous responses in authenticated mode", async () => {
+    const db = {
+      execute: vi.fn().mockResolvedValue([{ "?column?": 1 }]),
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([{ count: 1 }]),
+        })),
+      })),
+    } as unknown as Db;
+    const app = express();
+    app.use((req, _res, next) => {
+      (req as any).actor = { type: "none", source: "none" };
+      next();
+    });
+    app.use(
+      "/health",
+      healthRoutes(db, {
+        deploymentMode: "authenticated",
+        deploymentExposure: "public",
+        authReady: true,
+        companyDeletionEnabled: false,
+        statusBarHealthEnabled: true,
+        hermesHealthProbe: () => ({ total: 3, alive: 3, initialized: 3, lastActivityAt: null }),
+      }),
+    );
+
+    const res = await request(app).get("/health");
+
+    expect(res.status).toBe(200);
+    expect(res.body.hermes).toBeUndefined();
+    expect(res.body.features).toBeUndefined();
+  });
+
   it("keeps detailed metadata for authenticated requests in authenticated mode", async () => {
     const devServerStatus = await import("../dev-server-status.js");
     vi.spyOn(devServerStatus, "readPersistedDevServerStatus").mockReturnValue(undefined);
