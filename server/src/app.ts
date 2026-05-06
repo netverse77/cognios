@@ -355,22 +355,33 @@ export async function createApp(
           immutable: true,
         }),
       );
+      // Brand-flipped index.html for the SPA shell. Registered BEFORE the
+      // generic static middleware so we win for `/` and `/index.html`:
+      // express.static would otherwise serve the on-disk dist/index.html
+      // verbatim (default `index: 'index.html'` behaviour), bypassing the
+      // applyUiBranding pass that injects the worktree/brand-theme meta and
+      // favicon blocks under THEME_COGNI_OS=1 (COG-117 / COG-159).
+      const serveIndexHtml = (_req: express.Request, res: express.Response) => {
+        res
+          .status(200)
+          .set("Content-Type", "text/html")
+          .set("Cache-Control", "no-cache")
+          .end(indexHtml);
+      };
+      app.get("/", serveIndexHtml);
+      app.get("/index.html", serveIndexHtml);
       // Non-hashed static files (favicon.ico, manifest, robots.txt, etc.):
       // short cache so operators who swap them out see the new version
-      // reasonably fast. Override for `index.html` specifically — it is
-      // served by this middleware for `/` and `/index.html`, and it must
-      // never outlive the asset hashes it points at.
+      // reasonably fast. `index: false` prevents the directory-index
+      // behaviour from re-serving the unbranded dist/index.html for `/`
+      // (the explicit handlers above own that route).
       app.use(
         express.static(uiDist, {
+          index: false,
           maxAge: "1h",
-          setHeaders(res, filePath) {
-            if (path.basename(filePath) === "index.html") {
-              res.set("Cache-Control", "no-cache");
-            }
-          },
         }),
       );
-      // SPA fallback. Only for non-asset routes — if the browser asks for
+      // SPA fallback for client-side routes. If the browser asks for
       // /assets/something.js that doesn't exist, we must NOT serve the HTML
       // shell: the browser would try to load it as a JavaScript module, fail
       // with a MIME-type error, and cache that broken response. Return 404
@@ -381,11 +392,7 @@ export async function createApp(
           res.status(404).end();
           return;
         }
-        res
-          .status(200)
-          .set("Content-Type", "text/html")
-          .set("Cache-Control", "no-cache")
-          .end(indexHtml);
+        serveIndexHtml(req, res);
       });
     } else {
       console.warn("[paperclip] UI dist not found; running in API-only mode");
