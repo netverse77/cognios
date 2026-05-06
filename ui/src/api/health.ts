@@ -12,6 +12,16 @@ export type DevServerHealthStatus = {
   lastRestartAt: string | null;
 };
 
+export type HermesHealthStatus = "ok" | "degraded" | "offline" | "idle";
+
+export type HermesHealthSummary = {
+  status: HermesHealthStatus;
+  total: number;
+  alive: number;
+  initialized: number;
+  lastActivityAt: string | null;
+};
+
 export type HealthStatus = {
   status: "ok";
   version?: string;
@@ -22,8 +32,10 @@ export type HealthStatus = {
   bootstrapInviteActive?: boolean;
   features?: {
     companyDeletionEnabled?: boolean;
+    statusBarHealthEnabled?: boolean;
   };
   devServer?: DevServerHealthStatus;
+  hermes?: HermesHealthSummary;
 };
 
 export const healthApi = {

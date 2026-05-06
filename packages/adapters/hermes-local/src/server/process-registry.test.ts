@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildHermesProcessSpec } from "./process-registry.js";
+import {
+  HermesProcessRegistry,
+  buildHermesProcessSpec,
+  type HermesProcessHandle,
+} from "./process-registry.js";
 
 describe("buildHermesProcessSpec", () => {
   const base = {
@@ -48,5 +52,61 @@ describe("buildHermesProcessSpec", () => {
       config: { hermesHome: "/h", env: { X: "1" } },
     });
     expect(d.configIdentity).not.toBe(a.configIdentity);
+  });
+});
+
+function fakeHandle(opts: {
+  agentId: string;
+  alive: boolean;
+  initialized: boolean;
+  lastUsedAt?: number;
+}): HermesProcessHandle {
+  return {
+    spec: {
+      agentId: opts.agentId,
+      companyId: "co",
+      command: "python",
+      args: [],
+      cwd: "/",
+      hermesHome: null,
+      extraEnv: {},
+      configIdentity: "x",
+    },
+    child: {
+      pid: 1234,
+      exitCode: opts.alive ? null : 0,
+      killed: !opts.alive,
+    } as unknown as HermesProcessHandle["child"],
+    sessionId: null,
+    initialized: opts.initialized,
+    lastUsedAt: opts.lastUsedAt ?? 0,
+    acpConnection: null,
+  };
+}
+
+describe("HermesProcessRegistry.healthSnapshot", () => {
+  it("returns idle counts when registry is empty", () => {
+    const registry = new HermesProcessRegistry();
+    expect(registry.healthSnapshot()).toEqual({
+      total: 0,
+      alive: 0,
+      initialized: 0,
+      lastActivityAt: null,
+    });
+  });
+
+  it("counts alive vs dead handles and surfaces max lastUsedAt", () => {
+    const registry = new HermesProcessRegistry();
+    const internal = (registry as unknown as { handles: Map<string, HermesProcessHandle> }).handles;
+    internal.set("a", fakeHandle({ agentId: "a", alive: true, initialized: true, lastUsedAt: 1_000 }));
+    internal.set("b", fakeHandle({ agentId: "b", alive: true, initialized: false, lastUsedAt: 5_000 }));
+    internal.set("c", fakeHandle({ agentId: "c", alive: false, initialized: true, lastUsedAt: 3_000 }));
+
+    expect(registry.healthSnapshot()).toEqual({
+      total: 3,
+      alive: 2,
+      initialized: 1,
+      lastActivityAt: 5_000,
+    });
   });
 });

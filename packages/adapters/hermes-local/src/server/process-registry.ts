@@ -146,6 +146,36 @@ export class HermesProcessRegistry {
     }));
   }
 
+  /**
+   * Aggregate health summary used by the UI status bar (COG-160). Walks the
+   * tracked handles once and reports counts so callers do not need a long
+   * snapshot. `lastActivityAt` is the max(lastUsedAt) across handles, in ms
+   * since epoch, or null when the registry has never seen a heartbeat.
+   */
+  healthSnapshot(): {
+    total: number;
+    alive: number;
+    initialized: number;
+    lastActivityAt: number | null;
+  } {
+    let total = 0;
+    let alive = 0;
+    let initialized = 0;
+    let lastActivityAt: number | null = null;
+    for (const handle of this.handles.values()) {
+      total += 1;
+      const stillRunning = handle.child.exitCode === null && !handle.child.killed;
+      if (stillRunning) alive += 1;
+      if (stillRunning && handle.initialized) initialized += 1;
+      if (handle.lastUsedAt > 0) {
+        lastActivityAt = lastActivityAt === null
+          ? handle.lastUsedAt
+          : Math.max(lastActivityAt, handle.lastUsedAt);
+      }
+    }
+    return { total, alive, initialized, lastActivityAt };
+  }
+
   private spawn(spec: HermesProcessSpec): HermesProcessHandle {
     const env: NodeJS.ProcessEnv = {
       ...sanitizeInheritedPaperclipEnv(process.env),

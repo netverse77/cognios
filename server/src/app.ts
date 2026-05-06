@@ -224,6 +224,8 @@ export async function createApp(
       deploymentExposure: opts.deploymentExposure,
       authReady: opts.authReady,
       companyDeletionEnabled: opts.companyDeletionEnabled,
+      statusBarHealthEnabled: process.env.PAPERCLIP_STATUS_BAR_HEALTH === "1",
+      hermesHealthProbe: () => getDefaultHermesProcessRegistry().healthSnapshot(),
     }),
   );
   api.use("/companies", companyRoutes(db, opts.storageService));
