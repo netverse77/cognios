@@ -1,0 +1,29 @@
+# Default to auto-detection of text files; normalize to LF in the index.
+* text=auto eol=lf
+
+# Force LF for files where CRLF would break execution (shebangs, container images).
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+
+# Common shell-related script extensions.
+*.bash text eol=lf
+*.zsh text eol=lf
+
+# Treat lockfiles, yaml, json as text with LF for consistency across hosts.
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+
+# Binary file types — never auto-convert.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.tar.gz binary
+*.tgz binary
+*.gz binary
